@@ -160,7 +160,6 @@ with tabs[0]:
                 st.success("Dossiê Gerado!")
                 dossie_completo = f"DOSSIÊ TÉCNICO: {ideia[:30]}\n\n--- 1. VIABILIDADE ---\n{r1}\n\n--- 2. PROJETO ---\n{r2}\n\n--- 3. MATERIAIS ---\n{r3}"
                 
-                # Salvando no Histórico
                 st.session_state.historico_projetos.append({
                     "titulo": f"Invenção: {ideia[:20]}...",
                     "tipo": "Invenção",
@@ -170,7 +169,6 @@ with tabs[0]:
 
                 st.markdown(dossie_completo)
 
-                # Download PDF Direct
                 pdf_bytes = criar_pdf("DOSSIE DE INVENCAO", dossie_completo)
                 st.download_button("📄 Baixar Dossiê Completo em PDF", data=pdf_bytes, file_name="Dossie_Invention.pdf", mime="application/pdf")
 
@@ -264,53 +262,3 @@ with tabs[2]:
                         
                         pecas_extraidas = []
                         if len(partes) > 1:
-                            try:
-                                json_str = partes[1].split("```")[0].strip()
-                                json_data = json.loads(json_str)
-                                pecas_extraidas = json_data.get("pecas_para_desenho", [])
-                            except Exception:
-                                pass
-                        
-                        st.session_state["pecas_orcamento"] = pecas_extraidas
-                        
-                        st.session_state.historico_projetos.append({
-                            "titulo": f"Orçamento: {uploaded_files[0].name}",
-                            "tipo": "Orçamento",
-                            "resumo": texto_orcamento[:150],
-                            "conteudo": texto_orcamento
-                        })
-
-                    except Exception as e:
-                        st.error(f"Erro ao processar orçamento: {str(e)}")
-
-    if "ultimo_orcamento_texto" in st.session_state:
-        st.markdown("---")
-        st.markdown(st.session_state["ultimo_orcamento_texto"])
-        
-        pdf_orc = criar_pdf("ORCAMENTO TECNICO", st.session_state["ultimo_orcamento_texto"])
-        st.download_button("📄 Baixar Orçamento em PDF", data=pdf_orc, file_name="Orcamento_Tecnico.pdf", mime="application/pdf")
-
-        if st.session_state.get("pecas_orcamento"):
-            st.divider()
-            st.subheader("📐 Desenho Técnico das Peças do Orçamento")
-            st.markdown("Selecione um dos componentes extraídos do orçamento para gerar seu esquemático 2D (Blueprint):")
-            
-            opcoes_pecas = [f"{p['nome']} - {p['descricao']}" for p in st.session_state["pecas_orcamento"]]
-            peca_selecionada = st.selectbox("Escolha a peça para gerar o Blueprint:", opcoes_pecas)
-            
-            if st.button("🎨 Gerar Blueprint da Peça Selecionada"):
-                with st.spinner(f"Gerando esquemático para: {peca_selecionada}..."):
-                    prompt_draw = f"""
-                    Atue como um gerador de gráficos Python (Matplotlib).
-                    Crie APENAS um código Python funcional que use matplotlib.pyplot para desenhar um esquema técnico 2D cotado do componente: '{peca_selecionada}'.
-                    
-                    REGRAS OBRIGATÓRIAS:
-                    - Defina o tamanho da figura como: fig, ax = plt.subplots(figsize=(10, 6))
-                    - Use fundo escuro estilo blueprint (facecolor='#0a192f') no fig e ax.
-                    - Use linhas e textos em branco ou azul claro (ex: '#00d2ff').
-                    - Inclua dimensões e cotas indicativas no desenho.
-                    - NUNCA use plt.tight_layout().
-                    - NÃO coloque explicações ou blocos ```python. Responda APENAS com o código puro.
-                    """
-                    try:
-                        codigo
