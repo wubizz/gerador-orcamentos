@@ -89,7 +89,6 @@ def read_excel_or_csv(file):
 # MOTOR CAD DE ALTA PRECISÃO (VISTAS ORTOGONAIS, COTAS E MATRIZ DE FURAÇÃO)
 # ==============================================================================
 def gerar_desenho_cad_industrial(nome_peca, comp=1200, larg=600):
-    """Gera um projeto CAD profissional com 3 painéis: Vista Frontal, Perfil Lateral e Matriz de Furação Técnica."""
     try:
         plt.close("all")
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5.5))
@@ -99,7 +98,7 @@ def gerar_desenho_cad_industrial(nome_peca, comp=1200, larg=600):
             ax.set_facecolor("#0a192f")
             ax.grid(True, color="#1e3a8a", linestyle=":", alpha=0.4)
 
-        # --- PAINEL 1: VISTA FRONTAL COM COTAS ---
+        # VISTA FRONTAL
         rect_front = patches.Rectangle((0.15, 0.2), 0.7, 0.6, linewidth=2, edgecolor="#38bdf8", facecolor="#1e293b", hatch="//")
         ax1.add_patch(rect_front)
         
@@ -116,7 +115,7 @@ def gerar_desenho_cad_industrial(nome_peca, comp=1200, larg=600):
         ax1.set_title("VISTA FRONTAL & USINAGEM", color="white", fontsize=10, weight="bold")
         ax1.axis("off")
 
-        # --- PAINEL 2: VISTA LATERAL / CORTE ---
+        # VISTA LATERAL / CORTE
         rect_side = patches.Rectangle((0.35, 0.2), 0.3, 0.6, linewidth=2, edgecolor="#38bdf8", facecolor="#334155")
         ax2.add_patch(rect_side)
         
@@ -128,7 +127,7 @@ def gerar_desenho_cad_industrial(nome_peca, comp=1200, larg=600):
         ax2.set_title("PERFIL / ESPESSURA", color="white", fontsize=10, weight="bold")
         ax2.axis("off")
 
-        # --- PAINEL 3: MATRIZ DE COORDENADAS DE FURAÇÃO ---
+        # MATRIZ CNC
         ax3.text(0.05, 0.85, "TABELA DE FUROS (CNC)", color="#38bdf8", fontsize=10, weight="bold")
         tabela_dados = [
             ["Furo", "X (mm)", "Y (mm)", "Tipo", "Diâmetro"],
@@ -454,7 +453,7 @@ with tabs[0]:
                     r1 = exec_agente(f"Pesquisador Científico em {area_projeto}. Analise viabilidade de: {ideia}")
 
                 with st.status("⚙️ Agente 2 (Engenheiro): Criando especificações...", expanded=True):
-                    r2 = exec_agente(f"Engenheiro. Com base no parecer:\n{r1}\nElabore o projeto técnico detalhado.")
+                    r2 = exec_agente(f"Engenheiro. Com base na análise:\n{r1}\nElabore o projeto técnico detalhado.")
 
                 with st.status("🛠️ Agente 3 (Maker): Gerando Lista de Materiais e Peças...", expanded=True):
                     prompt_maker = f"""
@@ -522,7 +521,7 @@ Estrutura obrigatória:
 # ==============================================================================
 with tabs[1]:
     st.subheader("📐 CAD Pro: Geração em Lote de Desenhos Multivistas & Análise de Renders/Projetos")
-    st.markdown("Envie uma **Imagem de Render/Plata**, um **Arquivo de Projeto (.json)** ou utilize o modo manual para gerar todos os desenhos CAD e tabelas CNC de uma só vez.")
+    st.markdown("Envie uma **Imagem de Render/Planta**, um **Arquivo de Projeto (.json)** ou utilize o modo manual para gerar todos os desenhos CAD e tabelas CNC de uma só vez.")
 
     cad_modo = st.radio("Selecione o modo de entrada:", ["📁 Importar Arquivo de Projeto / Imagem de Render", "⚙️ Modo Manual Peça Única"], horizontal=True)
 
@@ -561,7 +560,7 @@ with tabs[1]:
                                 pecas_lote = conteudo_json.get("pecas_para_desenho", [])
                             elif arquivo_cad.type == "application/pdf":
                                 texto_pdf = read_pdf(arquivo_cad)
-                                prompt_pdf = f"Extraia a lista de peças com nome, comp, larg do texto abaixo e retorne APENAS JSON puro:\n{text_pdf}\nFormato: {{\"pecas_para_desenho\": [{{\"nome\": \"\", \"comp\": 100, \"larg\": 100}}]}}"
+                                prompt_pdf = f"Extraia a lista de peças com nome, comp, larg do texto abaixo e retorne APENAS JSON puro:\n{texto_pdf}\nFormato: {{\"pecas_para_desenho\": [{{\"nome\": \"\", \"comp\": 100, \"larg\": 100}}]}}"
                                 res_pdf = call_gemini(prompt_pdf, gemini_key)
                                 pecas_lote = json.loads(extrair_json_seguro(res_pdf)).get("pecas_para_desenho", [])
 
