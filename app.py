@@ -27,12 +27,20 @@ if "historico_projetos" not in st.session_state:
     st.session_state.historico_projetos = []
 
 # ==============================================================================
-# FUNÇÕES UTILITÁRIAS
+# FUNÇÕES UTILITÁRIAS E DE PARSE BLINDADAS
 # ==============================================================================
 def limpar_codigo_python(texto_bruto):
     """Remove blocos de markdown e limpa espaços extras de códigos gerados por IA."""
     texto = texto_bruto.replace("```python", "").replace("```", "")
     return texto.strip()
+
+def extrair_json_seguro(texto_bruto):
+    """Extrai JSON bruto de forma segura, imune a quebras de linha."""
+    padrao = r"```(?:json)?\s*(.*?)\s*```"
+    match = re.search(padrao, texto_bruto, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return texto_bruto.strip()
 
 def read_pdf(file):
     try:
@@ -316,4 +324,201 @@ with tabs[2]:
                         contents_payload.insert(0, prompt_orcamento)
                         res_orc = call_gemini(contents_payload, gemini_key)
                         
-                        match = re.search(r'```(?:json)?\n?(.*?)\n?
+                        json_str = extrair_json_seguro(res_orc)
+                        dados_estruturados = json.loads(json_str)
+                        
+                        st.session_state["relatorio_texto"] = dados_estruturados.get("relatorio_texto", "Relatório Indisponível.")
+                        st.session_state["lista_materiais"] = dados_estruturados.get("lista_materiais", [])
+                        st.session_state["pecas_orcamento"] = dados_estruturados.get("pecas_para_desenho", [])
+                        
+                        st.session_state.historico_projetos.append({
+                            "titulo": f"Análise: {uploaded_files[0].name}",
+                            "tipo": "Orçamento/Extração",
+                            "resumo": st.session_state["relatorio_texto"][:150],
+                            "conteudo": st.session_state["relatorio_texto"]
+                        })
+
+                        st.success("Dados extraídos e estruturados com sucesso!")
+                    except Exception as e:
+                        st.error(f"Erro ao estruturar os dados. A IA pode não ter encontrado o formato correto. Detalhe: {str(e)}")
+
+    if "lista_materiais" in st.session_state and st.session_state["lista_materiais"]:
+        st.markdown("---")
+        st.markdown("### 📊 Relatório Técnico do Projeto")
+        st.write(st.session_state["relatorio_texto"])
+        
+        st.markdown("### 📋 Tabela de Materiais Extraída")
+        df_materiais = pd.DataFrame(st.session_state["lista_materiais"])
+        st.dataframe(df_materiais, use_container_width=True)
+        
+        buffer_excel = io.BytesIO()
+        with pd.ExcelWriter(buffer_excel, engine='xlsxwriter') as writer:
+            df_materiais.to_excel(writer, index=False, sheet_name='Lista_Materiais')
+        buffer_excel.seek(0)
+        
+        col_excel, col_pdf = st.columns(2)
+        with col_excel:
+            st.download_button(
+                label="📥 Baixar Planilha (.xlsx)",
+                data=buffer_excel,
+                file_name="Lista_Materiais.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary"
+            )
+        with col_pdf:
+            pdf_bytes = criar_pdf("RELATÓRIO TÉCNICO", st.session_state["relatorio_texto"])
+            st.download_button(
+                label="📄 Baixar Resumo em PDF", 
+                data=pdf_bytes, 
+                file_name="Resumo_Projeto.pdf", 
+                mime="application/pdf"
+            )
+
+        if st.session_state.get("pecas_orcamento"):
+            st.divider()
+            st.subheader("📐 Modelagem 2D Automática das Peças da Tabela")
+            st.markdown("Gere um *Blueprint* para os componentes encontrados na análise acima:")
+            
+            opcoes_desenho = [f"{p.get('nome', '')} - {p.get('descricao', '')}" for p in st.session_state["pecas_orcamento"]]
+            peca_selecionada = st.selectbox("Escolha o componente extraído:", opcoes_desenho)
+            
+            if st.button("🎨 Desenhar Componente Selecionado"):
+                with st.spinner(f"Gerando esquemático para: {peca_selecionada}..."):
+                    prompt_draw = f"""
+                    Atue APENAS como um gerador de código Python (Matplotlib).
+                    Crie o código para desenhar um esquema técnico 2D cotado da peça: '{peca_selecionada}'.
+                    
+                    REGRAS OBRIGATÓRIAS:
+                    - Defina o tamanho da figura como: fig, ax = plt.subplots(figsize=(10, 6))
+                    - Use fundo escuro estilo blueprint (facecolor='#0a192f') no fig e ax.
+                    - Use linhas e textos em branco ou azul claro ('#00d2ff').
+                    - NUNCA use plt.tight_layout().
+                    - Responda APENAS com o código puro. Nenhuma palavra a mais.
+                    """
+                    try:
+                        codigo_bruto = call_gemini(prompt_draw, gemini_key)
+                        codigo_python = limpar_codigo_python(codigo_bruto)
+                        
+                        plt.close('all')
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        exec_globals = {"plt": plt, "fig": fig, "ax": ax, "patches": patches}
+                        exec(codigo_python, exec_globals)
+                        
+                        st.pyplot(plt.gcf(), use_container_width=True)
+                        plt.close('all')
+                    except Exception as e:
+                        plt.close('all')
+                        st.error(f"Erro ao desenhar a peça. Detalhe: {str(e)}")
+
+# ------------------------------------------------------------------------------
+# ABA 4: OTIMIZADOR DE PLANO DE CORTE (NESTING)
+# ------------------------------------------------------------------------------
+with tabs[3]:
+    st.subheader("✂️ Otimizador de Plano de Corte & Nesting de Materiais")
+    st.markdown("Calcule a quantidade de chapas/barras necessárias com diagrama visual.")
+
+    col_mat, col_esp = st.columns(2)
+    with col_mat:
+        tipo_material = st.selectbox(
+            "Tipo de Matéria-Prima:",
+            ["MDF / Madeira (Chapa Padrão 2750 x 1850 mm)", 
+             "Tubos / Cantoneiras / Perfis (Barra de 6000 mm)", 
+             "Chapas Metálicas em Geral (Dimensão Personalizada)"]
+        )
+
+    if "MDF" in tipo_material:
+        largura_bruta = 2750
+        comprimento_bruto = 1850
+        st.info(f"📏 Dimensão da Chapa: **{largura_bruta} x {comprimento_bruto} mm**")
+    elif "Tubos" in tipo_material:
+        largura_bruta = 6000
+        comprimento_bruto = 0 
+        st.info(f"📏 Comprimento da Barra: **{largura_bruta} mm (6 metros)**")
+    else:
+        with col_esp:
+            largura_bruta = st.number_input("Largura da Chapa (mm):", min_value=100, value=3000, step=50)
+            comprimento_bruto = st.number_input("Comprimento da Chapa (mm):", min_value=100, value=1500, step=50)
+
+    st.divider()
+    lista_pecas_input = st.text_area(
+        "Formato (Peça, Largura_mm, Comprimento_mm, Quantidade):",
+        height=120,
+        placeholder="Ex: Lateral, 500, 1800, 2\nFundo, 500, 750, 2"
+    )
+    espessura_disco = st.number_input("Espessura do corte (Kerf em mm):", min_value=0.0, value=3.0, step=0.5)
+
+    if st.button("✂️ Calcular Plano de Corte e Gerar Diagrama", type="primary"):
+        if not lista_pecas_input.strip():
+            st.warning("Preencha a lista de peças.")
+        else:
+            with st.spinner("Calculando aproveitamento e gerando plano..."):
+                prompt_corte = f"""
+                Atue como Especialista em Nesting de Corte.
+                - Tipo: {tipo_material}
+                - Dimensões: {largura_bruta}x{comprimento_bruto}mm (Kerf: {espessura_disco}mm)
+                - Peças: {lista_pecas_input}
+                
+                Gere um relatório detalhado com a quantidade de chapas/barras necessárias e % de aproveitamento.
+                """
+                try:
+                    res_corte = call_gemini(prompt_corte, gemini_key)
+                    st.markdown(res_corte)
+                    
+                    prompt_draw_nesting = f"""
+                    Crie código Python (Matplotlib) funcional para desenhar a disposição gráfica das peças na chapa:
+                    Matéria-Prima: {largura_bruta}x{comprimento_bruto}mm. Peças: {lista_pecas_input}.
+                    - Retângulo da chapa: fundo cinza escuro.
+                    - Peças: cores vivas e rótulos.
+                    - fig, ax = plt.subplots(figsize=(10, 6))
+                    - NUNCA use plt.tight_layout().
+                    - RETORNE APENAS O CÓDIGO PYTHON PURO.
+                    """
+                    
+                    codigo_bruto = call_gemini(prompt_draw_nesting, gemini_key)
+                    codigo_nesting = limpar_codigo_python(codigo_bruto)
+                    
+                    plt.close('all')
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    exec_globals = {"plt": plt, "fig": fig, "ax": ax, "patches": patches}
+                    exec(codigo_nesting, exec_globals)
+                    st.pyplot(plt.gcf(), use_container_width=True)
+                    plt.close('all')
+                    
+                    st.session_state.historico_projetos.append({
+                        "titulo": f"Plano de Corte ({tipo_material[:10]})",
+                        "tipo": "Plano de Corte",
+                        "resumo": f"Material: {tipo_material} | Pecas: {lista_pecas_input[:50]}...",
+                        "conteudo": res_corte
+                    })
+                except Exception as e:
+                    plt.close('all')
+                    st.error(f"Erro no cálculo do plano de corte: {str(e)}")
+
+# ------------------------------------------------------------------------------
+# ABA 5: VÍDEOS & NARRAÇÃO
+# ------------------------------------------------------------------------------
+with tabs[4]:
+    st.subheader("🎬 Gerador de Conteúdo Multimídia (Roteiro + Narração)")
+    topico_video = st.text_input("Tema do Vídeo:", placeholder="Ex: Apresentação comercial da nova invenção")
+    idioma = st.selectbox("Idioma:", ["pt", "en", "es"])
+
+    if st.button("🎬 Criar Roteiro e Gerar Narração em Áudio"):
+        if not topico_video:
+            st.warning("Digite o tema.")
+        else:
+            with st.spinner("Sintetizando locução em MP3..."):
+                try:
+                    roteiro = call_gemini(f"Crie um roteiro de vídeo curto (1 min) para: '{topico_video}'. Divida em [CENA], [VISUAL] e [LOCUÇÃO].", gemini_key)
+                    st.markdown("### 📜 Roteiro Cinematográfico")
+                    st.markdown(roteiro)
+                    
+                    tts = gTTS(text=roteiro, lang=idioma, slow=False)
+                    fp = io.BytesIO()
+                    tts.write_to_fp(fp)
+                    fp.seek(0)
+                    
+                    st.markdown("### 🎙️ Narração Gerada")
+                    st.audio(fp, format="audio/mp3")
+                    st.download_button("🎵 Baixar Áudio MP3", data=fp, file_name="locucao.mp3", mime="audio/mp3")
+                except Exception as e:
+                    st.error(f"Erro ao gerar multimídia: {str(e)}")
