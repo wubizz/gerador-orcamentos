@@ -19,7 +19,7 @@ import os
 # CONFIGURAÇÃO DA PÁGINA
 # ==============================================================================
 st.set_page_config(
-    page_title="Multi-Engine IA: Engenharia, Projetos & Orçamentos",
+    page_title="Multi-Engine IA: Engenharia, Projetos & Orçamentos Pro",
     page_icon="⚡",
     layout="wide"
 )
@@ -31,10 +31,9 @@ if "historico_projetos" not in st.session_state:
     st.session_state.historico_projetos = []
 
 # ==============================================================================
-# FUNÇÕES UTILITÁRIAS
+# FUNÇÕES UTILITÁRIAS E DE PARSE
 # ==============================================================================
 def limpar_codigo_python(texto_bruto):
-    """Remove cercas Markdown de um código Python retornado pela IA."""
     if not texto_bruto:
         return ""
     texto = str(texto_bruto)
@@ -45,32 +44,23 @@ def limpar_codigo_python(texto_bruto):
 
 
 def extrair_json_seguro(texto_bruto):
-    """Extrai JSON mesmo quando a IA devolve ```json ... ```."""
     if not texto_bruto:
         raise ValueError("A IA retornou uma resposta vazia.")
-
     texto = str(texto_bruto).strip()
     match = re.search(r"```(?:json)?\s*(.*?)\s*```", texto, re.IGNORECASE | re.DOTALL)
     if match:
         texto = match.group(1).strip()
-
     inicio = texto.find("{")
     fim = texto.rfind("}")
     if inicio != -1 and fim != -1 and fim > inicio:
         texto = texto[inicio:fim + 1]
-
     return texto.strip()
 
 
 def ler_pdf(file):
-    """Lê texto de um PDF."""
     try:
         reader = pypdf.PdfReader(file)
-        partes = []
-        for page in reader.pages:
-            extraido = page.extract_text()
-            if extraido:
-                partes.append(extraido)
+        partes = [page.extract_text() for page in reader.pages if page.extract_text()]
         return "\n".join(partes)
     except Exception as e:
         return f"Erro ao ler PDF: {str(e)}"
@@ -79,7 +69,7 @@ read_pdf = ler_pdf
 
 
 def read_excel_or_csv(file):
-    """Lê CSV/XLSX e devolve representação textual da tabela."""
+    """Lê CSV ou planilhas Excel estruturando perfeitamente em DataFrame."""
     try:
         nome = getattr(file, "name", "").lower()
         if nome.endswith(".csv"):
@@ -90,57 +80,60 @@ def read_excel_or_csv(file):
                 df = pd.read_csv(file, encoding="latin-1")
         else:
             df = pd.read_excel(file)
-        return df.to_string(index=False)
+        return df
     except Exception as e:
-        return f"Erro ao ler planilha: {str(e)}"
+        st.error(f"Erro ao ler planilha: {str(e)}")
+        return pd.DataFrame()
 
 
-def gerar_imagem_peca_temp(nome_peca, descricao_peca=""):
-    """Gera um esquemático técnico detalhado (com cotas e eixos) para a peça no PDF."""
+# ==============================================================================
+# MOTOR CAD PROFISSIONAL (MÚLTIPLAS VISTAS, COTAS E FURAÇÕES TÉCNICAS)
+# ==============================================================================
+def gerar_desenho_cad_profissional(nome_peca, comp=1200, larg=600):
+    """Gera um desenho técnico CAD avançado com projeção ortogonal (Frontal e Lateral), eixos e furações."""
     try:
         plt.close("all")
-        fig, ax = plt.subplots(figsize=(7, 4.5))
-        ax.set_facecolor("#0a192f")
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
         fig.patch.set_facecolor("#0a192f")
-
-        # Contorno principal da peça
-        rect = patches.Rectangle(
-            (0.15, 0.25), 0.7, 0.5,
-            linewidth=2, edgecolor="#00d2ff", facecolor="#172a45"
-        )
-        ax.add_patch(rect)
-
-        # Indicadores de furação simulados (minifix/cavilhas)
-        circle1 = patches.Circle((0.25, 0.5), 0.03, facecolor="#ff4757", edgecolor="white")
-        circle2 = patches.Circle((0.75, 0.5), 0.03, facecolor="#ff4757", edgecolor="white")
-        ax.add_patch(circle1)
-        ax.add_patch(circle2)
-
-        # Linhas de cota técnicas simuladas
-        ax.annotate('', xy=(0.15, 0.18), xytext=(0.85, 0.18),
-                    arrowprops=dict(arrowstyle="<->", color="#ffa502", lw=1.2))
-        ax.text(0.5, 0.12, "COMPRIMENTO (Cota Principal)", color="#ffa502", fontsize=9, ha="center")
-
-        ax.annotate('', xy=(0.08, 0.25), xytext=(0.08, 0.75),
-                    arrowprops=dict(arrowstyle="<->", color="#ffa502", lw=1.2))
-        ax.text(0.04, 0.5, "LARG.", color="#ffa502", fontsize=9, ha="center", rotation=90)
-
-        ax.text(0.5, 0.5, f"{str(nome_peca)}", color="white", fontsize=11, ha="center", va="center", weight="bold")
         
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        ax.axis("off")
+        for ax in [ax1, ax2]:
+            ax.set_facecolor("#0a192f")
+            ax.grid(True, color="#1e3a8a", linestyle="--", alpha=0.3)
+
+        # --- VISTA FRONTAL (CAD) ---
+        rect_front = patches.Rectangle((0.1, 0.2), 0.8, 0.6, linewidth=2, edgecolor="#00d2ff", facecolor="#172a45", hatch="//")
+        ax1.add_patch(rect_front)
+        
+        # Furações e detalhes na vista frontal
+        ax1.add_patch(patches.Circle((0.2, 0.5), 0.03, facecolor="#ff4757", edgecolor="white"))
+        ax1.add_patch(patches.Circle((0.8, 0.5), 0.03, facecolor="#ff4757", edgecolor="white"))
+        
+        # Cotas Vista Frontal
+        ax1.annotate('', xy=(0.1, 0.12), xytext=(0.9, 0.12), arrowprops=dict(arrowstyle="<->", color="#ffa502", lw=1.5))
+        ax1.text(0.5, 0.06, f"COMPRIMENTO: {comp} mm", color="#ffa502", fontsize=10, ha="center", weight="bold")
+        
+        ax1.set_xlim(0, 1)
+        ax1.set_ylim(0, 1)
+        ax1.set_title(f"VISTA FRONTAL: {str(nome_peca).upper()}", color="white", fontsize=11, weight="bold")
+        ax1.axis("off")
+
+        # --- VISTA LATERAL / CORTE (CAD) ---
+        rect_side = patches.Rectangle((0.3, 0.2), 0.4, 0.6, linewidth=2, edgecolor="#00d2ff", facecolor="#1e293b")
+        ax2.add_patch(rect_side)
+        
+        ax2.annotate('', xy=(0.2, 0.2), xytext=(0.2, 0.8), arrowprops=dict(arrowstyle="<->", color="#ffa502", lw=1.5))
+        ax2.text(0.1, 0.5, f"LARG: {larg} mm", color="#ffa502", fontsize=10, ha="center", rotation=90, weight="bold")
+        
+        ax2.set_xlim(0, 1)
+        ax2.set_ylim(0, 1)
+        ax2.set_title("VISTA LATERAL / PERFIL", color="white", fontsize=11, weight="bold")
+        ax2.axis("off")
+
+        plt.suptitle(f"DETALHAMENTO TÉCNICO CAD • {str(nome_peca).upper()}", color="#38bdf8", fontsize=14, weight="bold", y=0.95)
 
         tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
         tmp_file.close()
-
-        plt.savefig(
-            tmp_file.name,
-            format="png",
-            bbox_inches="tight",
-            facecolor=fig.get_facecolor(),
-            edgecolor="none"
-        )
+        plt.savefig(tmp_file.name, format="png", bbox_inches="tight", facecolor=fig.get_facecolor(), edgecolor="none")
         plt.close("all")
         return tmp_file.name
     except Exception:
@@ -148,64 +141,168 @@ def gerar_imagem_peca_temp(nome_peca, descricao_peca=""):
         return None
 
 
-def criar_pdf_com_desenhos(titulo, conteudo_texto, lista_pecas_desenho=None):
-    """Cria PDF com relatório e esquemáticos técnicos detalhados das peças."""
-    pdf = FPDF()
+# ==============================================================================
+# MAPA GRÁFICO DE NESTING (APROVEITAMENTO DE CORTE EM CHAPAS)
+# ==============================================================================
+def gerar_grafico_nesting_temp(chapa_c=2750, chapa_l=1850, lista_pecas=None):
+    try:
+        plt.close("all")
+        fig, ax = plt.subplots(figsize=(9, 6))
+        ax.set_facecolor("#0f172a")
+        fig.patch.set_facecolor("#0f172a")
+
+        chapa_rect = patches.Rectangle((0, 0), chapa_c, chapa_l, linewidth=2, edgecolor="#38bdf8", facecolor="#1e293b")
+        ax.add_patch(chapa_rect)
+
+        cores = ["#f43f5e", "#fbbf24", "#34d399", "#38bdf8", "#a855f7", "#ec4899", "#f97316"]
+        if not lista_pecas:
+            lista_pecas = [{"COMP": 1000, "LARG": 500, "QTD": 2, "NOME": "Exemplo"}]
+
+        curr_x, curr_y = 60.0, 60.0
+        max_row_h = 0.0
+        idx_cor = 0
+
+        for p in lista_pecas:
+            c = float(p.get("COMP", 500))
+            l = float(p.get("LARG", 300))
+            qtd = int(p.get("QTD", 1))
+            nome = str(p.get("NOME", "Peça"))
+
+            for _ in range(min(qtd, 15)):
+                if curr_x + c > chapa_c - 60:
+                    curr_x = 60.0
+                    curr_y += max_row_h + 60.0
+                    max_row_h = 0.0
+
+                if curr_y + l > chapa_l - 60:
+                    break
+
+                cor = cores[idx_cor % len(cores)]
+                p_rect = patches.Rectangle((curr_x, curr_y), c, l, linewidth=1, edgecolor="white", facecolor=cor, alpha=0.9)
+                ax.add_patch(p_rect)
+                ax.text(curr_x + c/2, curr_y + l/2, f"{nome[:10]}\n{int(c)}x{int(l)}", color="#0f172a", fontsize=7, ha="center", va="center", weight="bold")
+
+                max_row_h = max(max_row_h, l)
+                curr_x += c + 30.0
+                idx_cor += 1
+
+        ax.set_xlim(-150, chapa_c + 150)
+        ax.set_ylim(-150, chapa_l + 150)
+        ax.set_aspect('equal')
+        ax.axis("off")
+        ax.set_title("MAPA DE DISTRIBUIÇÃO GRÁFICA DE CORTE (NESTING)", color="white", fontsize=12, weight="bold", pad=15)
+
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        tmp_file.close()
+        plt.savefig(tmp_file.name, format="png", bbox_inches="tight", facecolor=fig.get_facecolor(), edgecolor="none")
+        plt.close("all")
+        return tmp_file.name
+    except Exception:
+        plt.close("all")
+        return None
+
+
+# ==============================================================================
+# GERAÇÃO DE PDF COMERCIAL COLORIDO (PADRÃO APOSTILA / MANUAL CORPORATIVO)
+# ==============================================================================
+class PDFComercialColorido(FPDF):
+    def header(self):
+        # Cabeçalho corporativo com faixa azul
+        self.set_fill_color(15, 23, 42) # Azul escuro
+        self.rect(0, 0, 210, 22, 'F')
+        self.set_font("Helvetica", "B", 10)
+        self.set_text_color(255, 255, 255)
+        self.set_xy(10, 6)
+        self.cell(0, 10, "RELATÓRIO TÉCNICO COMERCIAL & ENGENHARIA", 0, 0, "L")
+        self.set_xy(-60, 6)
+        self.cell(50, 10, "DOCUMENTAÇÃO PRO", 0, 0, "R")
+        self.ln(20)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font("Helvetica", "I", 8)
+        self.set_text_color(120, 120, 120)
+        self.cell(0, 10, f"Página {self.page_no()} | Multi-Engine IA Industrial Suite", 0, 0, "C")
+
+
+def criar_pdf_relatorio_comercial(titulo, conteudo_texto, lista_pecas_desenho=None, grafico_nesting_path=None):
+    pdf = PDFComercialColorido()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    pdf.set_font("Helvetica", "B", 14)
-    titulo_limpo = str(titulo).encode("latin-1", "replace").decode("latin-1")
-    pdf.cell(pdf.epw, 10, text=titulo_limpo, new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.ln(5)
+    # Título Principal do Relatório
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_text_color(15, 23, 42)
+    pdf.cell(0, 10, str(titulo).encode("latin-1", "replace").decode("latin-1"), 0, 1, "L")
+    pdf.set_draw_color(56, 189, 248) # Azul claro
+    pdf.set_line_width(1)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(8)
 
+    # Bloco Executivo / Resumo Técnico com fundo colorido simulado
     pdf.set_font("Helvetica", size=10)
+    pdf.set_text_color(50, 50, 50)
     largura_util = pdf.epw
 
     for linha in str(conteudo_texto).split("\n"):
-        texto_limpo = linha.encode("latin-1", "replace").decode("latin-1")
+        linha_limpa = linha.encode("latin-1", "replace").decode("latin-1")
         try:
-            if not texto_limpo.strip():
+            if not linha_limpa.strip():
                 pdf.ln(3)
-            elif len(texto_limpo) > 90 and " " not in texto_limpo:
-                for parte in textwrap.wrap(texto_limpo, 90):
-                    pdf.multi_cell(w=largura_util, h=5.5, text=parte, new_x="LMARGIN", new_y="NEXT")
+            elif "---" in linha_limpa or "===" in linha_limpa:
+                pdf.ln(4)
+                pdf.set_font("Helvetica", "B", 11)
+                pdf.set_text_color(30, 58, 138)
+                pdf.cell(largura_util, 7, linha_limpa, 0, 1, "L")
+                pdf.set_font("Helvetica", size=10)
+                pdf.set_text_color(50, 50, 50)
             else:
-                pdf.multi_cell(w=largura_util, h=5.5, text=texto_limpo, new_x="LMARGIN", new_y="NEXT")
+                pdf.multi_cell(largura_util, 5.5, linha_limpa, 0, "L")
         except Exception:
-            pdf.multi_cell(w=largura_util, h=5.5, text="[Linha com formatação inválida omitida]", new_x="LMARGIN", new_y="NEXT")
+            pdf.multi_cell(largura_util, 5.5, "[Linha omitida]", 0, "L")
 
+    # Inclusão do Mapa Gráfico de Nesting no PDF
+    if grafico_nesting_path and os.path.exists(grafico_nesting_path):
+        pdf.add_page()
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_text_color(15, 23, 42)
+        pdf.cell(0, 10, "MAPA GRÁFICO DE CORTE (NESTING OTIMIZADO)", 0, 1, "C")
+        pdf.ln(5)
+        try:
+            pdf.image(grafico_nesting_path, w=175)
+            pdf.ln(5)
+        except Exception:
+            pass
+
+    # Inclusão dos Desenhos Técnicos CAD Multivistas no PDF
     if lista_pecas_desenho:
         pdf.add_page()
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(pdf.epw, 10, text="ESQUEMÁTICO TÉCNICO COM COTAS E FURAÇÕES", new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_text_color(15, 23, 42)
+        pdf.cell(0, 10, "CATÁLOGO DE DETALHAMENTO CAD (VISTAS ORTOGONAIS)", 0, 1, "C")
         pdf.ln(5)
 
         for peca in lista_pecas_desenho:
             if not isinstance(peca, dict):
                 continue
-
             nome = peca.get("nome", "Peça")
-            descricao = peca.get("descricao", "")
+            comp = peca.get("comp", 1200)
+            larg = peca.get("larg", 600)
 
-            pdf.set_font("Helvetica", "B", 10)
-            pdf.cell(pdf.epw, 6, text=f"Componente: {str(nome)}", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(30, 58, 138)
+            pdf.cell(largura_util, 7, f"Componente: {str(nome)} ({comp} x {larg} mm)", 0, 1, "L")
 
-            if descricao:
-                pdf.set_font("Helvetica", size=9)
-                desc_limpa = str(descricao).encode("latin-1", "replace").decode("latin-1")
-                pdf.multi_cell(pdf.epw, 5, text=desc_limpa, new_x="LMARGIN", new_y="NEXT")
-
-            img_path = gerar_imagem_peca_temp(nome, descricao)
-            if img_path and os.path.exists(img_path):
+            img_cad = gerar_desenho_cad_profissional(nome, comp, larg)
+            if img_cad and os.path.exists(img_cad):
                 try:
-                    pdf.image(img_path, w=110)
-                    pdf.ln(5)
+                    pdf.image(img_cad, w=175)
+                    pdf.ln(8)
                 except Exception:
                     pass
                 finally:
                     try:
-                        os.unlink(img_path)
+                        os.unlink(img_cad)
                     except OSError:
                         pass
 
@@ -225,7 +322,6 @@ def validar_chave(chave, nome):
 def call_gemini(contents_payload, api_key, model="gemini-3.6-flash"):
     if not validar_chave(api_key, "Gemini"):
         raise ValueError("Gemini API Key não informada.")
-
     client = genai.Client(api_key=api_key)
     try:
         response = client.models.generate_content(model=model, contents=contents_payload)
@@ -234,7 +330,6 @@ def call_gemini(contents_payload, api_key, model="gemini-3.6-flash"):
         error_msg = str(e)
         if "503" in error_msg or "high demand" in error_msg.lower() or "404" in error_msg:
             fallback_model = "gemini-1.5-flash"
-            st.warning(f"⚠️ O modelo {model} está sobrecarregado. Usando reserva ({fallback_model})...")
             try:
                 response_fallback = client.models.generate_content(model=fallback_model, contents=contents_payload)
                 return response_fallback.text
@@ -291,9 +386,9 @@ with st.sidebar:
             with st.expander(f"📌 {item['titulo']}"):
                 st.caption(f"Tipo: {item['tipo']}")
                 st.write(item["resumo"][:150] + "...")
-                pdf_data = criar_pdf_com_desenhos(item["titulo"], item["conteudo"], item.get("pecas"))
+                pdf_data = criar_pdf_relatorio_comercial(item["titulo"], item["conteudo"], item.get("pecas"), item.get("nesting_img"))
                 st.download_button(
-                    "📄 Baixar PDF com Desenhos",
+                    "📄 Baixar PDF Comercial Colorido",
                     data=pdf_data,
                     file_name=f"{item['titulo'][:30].replace(' ', '_')}.pdf",
                     mime="application/pdf",
@@ -310,8 +405,8 @@ st.title("⚡ Multi-Engine IA: Invenções & Engenharia Pro")
 
 tabs = st.tabs([
     "🧪 Agentes de Invenção",
-    "📐 Blueprint & Peças",
-    "📋 Orçamentos e Extração",
+    "📐 CAD Pro (Múltiplas Vistas)",
+    "📋 Orçamentos, Planilha Real & Nesting",
     "✂️ Otimizador de Corte",
     "🎬 Vídeos & Narração"
 ])
@@ -369,7 +464,9 @@ Estrutura obrigatória:
   "pecas_para_desenho": [
     {{
       "nome": "Nome da Peça",
-      "descricao": "Descrição geométrica com cotas e furações"
+      "comp": 100,
+      "larg": 50,
+      "descricao": "Detalhes geométricos com cotas e furações"
     }}
   ]
 }}
@@ -398,82 +495,62 @@ Estrutura obrigatória:
                 })
 
                 st.markdown(dossie_completo)
-                pdf_bytes = criar_pdf_com_desenhos("DOSSIE DE INVENCAO", dossie_completo, dados_inv.get("pecas_para_desenho", []))
-                st.download_button("📄 Baixar Dossiê Completo + Desenhos em PDF", data=pdf_bytes, file_name="Dossie_Invention_Com_Desenhos.pdf", mime="application/pdf")
+                pdf_bytes = criar_pdf_relatorio_comercial("DOSSIE DE INVENCAO", dossie_completo, dados_inv.get("pecas_para_desenho", []))
+                st.download_button("📄 Baixar PDF Comercial Colorido", data=pdf_bytes, file_name="Dossie_Comercial.pdf", mime="application/pdf")
 
             except Exception as e:
                 st.error(f"Erro: {str(e)}")
 
 
 # ==============================================================================
-# ABA 2 — BLUEPRINT & DESENHO DE PEÇAS
+# ABA 2 — CAD PRO (MÚLTIPLAS VISTAS)
 # ==============================================================================
 with tabs[1]:
-    st.subheader("📐 Gerador de Desenhos Técnicos Detalhados (Cotas e Furações)")
-    descricao_peca = st.text_input("Descrição da peça:", placeholder="Ex: Lateral de armário 700x500mm com furação Minifix e dobradiças")
+    st.subheader("📐 CAD Pro: Gerador de Desenhos Técnicos Multivistas (Estilo AutoCAD)")
+    col_d1, col_d2 = st.columns(2)
+    with col_d1:
+        peca_nome_input = st.text_input("Nome da Peça CAD:", value="Lateral de Gabinete")
+    with col_d2:
+        dim_comp = st.number_input("Comprimento (mm):", min_value=10.0, value=1200.0, step=50.0)
+        dim_larg = st.number_input("Largura (mm):", min_value=10.0, value=600.0, step=50.0)
 
-    if st.button("🎨 Gerar Desenho Técnico 2D com Cotas"):
-        if not descricao_peca.strip():
-            st.warning("Descreva a peça primeiro.")
-        elif not gemini_key:
-            st.error("Insira a chave Gemini na barra lateral.")
+    if st.button("🎨 Renderizar Desenho CAD Multivistas"):
+        if not peca_nome_input.strip():
+            st.warning("Informe o nome da peça.")
         else:
-            with st.spinner("Desenhando esquemático profissional com cotas, eixos e furações..."):
-                prompt_draw = f"""
-Atue como um Engenheiro Desenhista especialista em CAD e Matplotlib.
-Crie APENAS um código Python funcional usando matplotlib.pyplot para desenhar um esquema técnico 2D cotado e detalhado da peça:
-'{descricao_peca}'
-
-REGRAS OBRIGATÓRIAS:
-- Defina: fig, ax = plt.subplots(figsize=(10, 6))
-- Use fundo estilo blueprint industrial (facecolor='#0a192f') no fig e ax.
-- Desenhe o contorno da peça em azul claro ('#00d2ff') com preenchimiento translúcido ('#172a45').
-- Adicione linhas de cota detalhadas (setas com dimensões de comprimento e largura).
-- Desenhe marcações visíveis de furações (círculos vermelhos/amarelos para furos de cavilhas, minifix ou fixação).
-- Insira legendas e textos técnicos explicativos em branco/amarelo.
-- NUNCA use plt.tight_layout().
-- O código deve ser autocontido e retornar APENAS o código Python puro, sem explicações.
-""".strip()
-
+            with st.spinner("Gerando projeções ortogonais CAD..."):
                 try:
-                    codigo_bruto = call_gemini(prompt_draw, gemini_key)
-                    codigo_python = limpar_codigo_python(codigo_bruto)
-
-                    plt.close("all")
-                    fig, ax = plt.subplots(figsize=(10, 6))
-                    exec_globals = {"plt": plt, "fig": fig, "ax": ax, "patches": patches}
-                    exec(codigo_python, exec_globals)
-
-                    st.pyplot(plt.gcf(), use_container_width=True)
-                    plt.close("all")
-                    st.success("Desenho Técnico com Cotas e Furações Gerado com Sucesso!")
+                    img_path = gerar_desenho_cad_profissional(peca_nome_input, dim_comp, dim_larg)
+                    if img_path and os.path.exists(img_path):
+                        st.image(img_path, caption=f"CAD Multivistas: {peca_nome_input}", use_container_width=True)
+                        os.unlink(img_path)
+                    st.success("Desenho CAD gerado com sucesso!")
                 except Exception as e:
-                    plt.close("all")
-                    st.error(f"Erro ao desenhar: {str(e)}")
+                    st.error(f"Erro ao renderizar CAD: {e}")
 
 
 # ==============================================================================
-# ABA 3 — ORÇAMENTOS TÉCNICOS & EXTRAÇÃO COM APROVEITAMENTO AUTOMÁTICO
+# ABA 3 — ORÇAMENTOS, PLANILHA REAL & NESTING
 # ==============================================================================
 with tabs[2]:
-    st.subheader("📋 Leitor de Projetos, Extração de Materiais & Aproveitamento de Corte Automático")
-    st.markdown("Faça upload de **Imagens (Plantas)**, **PDFs técnicos** ou **Planilhas** para converter na Lista Completa de Insumos e calcular o **aproveitamento de chapas/barras automaticamente**.")
+    st.subheader("📋 Orçamentos, Planilha Real Estilizada & Nesting Automático")
+    st.markdown("Faça upload de **Imagens (Plantas/Projetos)**, **PDFs técnicos** ou **Planilhas** para extrair insumos, gerar planilha formatada e o mapa gráfico de corte.")
 
     col_mat_opt1, col_mat_opt2 = st.columns(2)
     with col_mat_opt1:
-        chapa_padrao_comp = st.number_input("Comp. Matéria-Prima Padrão (mm):", min_value=100.0, value=2750.0, step=50.0)
+        chapa_padrao_comp = st.number_input("Comp. Chapa Base (mm):", min_value=100.0, value=2750.0, step=50.0)
     with col_mat_opt2:
-        chapa_padrao_larg = st.number_input("Larg. Matéria-Prima Padrão (mm):", min_value=100.0, value=1850.0, step=50.0)
+        chapa_padrao_larg = st.number_input("Larg. Chapa Base (mm):", min_value=100.0, value=1850.0, step=50.0)
 
     scale_info = st.text_input("Referência de escala (Opcional):", placeholder="Ex: O vão principal tem 3.50m...")
     uploaded_files = st.file_uploader("Upload de Arquivos:", type=["pdf", "xlsx", "csv", "png", "jpg", "jpeg"], accept_multiple_files=True)
 
     if uploaded_files:
-        if st.button("🚀 Analisar Projeto, Extrair Insumos e Calcular Aproveitamento", type="primary"):
+        if st.button("🚀 Analisar Projeto, Gerar Planilha Real e Nesting", type="primary"):
             if not gemini_key:
                 st.error("Insira a chave Gemini na barra lateral.")
             else:
-                with st.spinner("Analisando documentos, calculando áreas e otimizando corte..."):
+                with st.spinner("Processando documentos, extraindo insumos e gerando planilha..."):
                     try:
                         contents_payload = []
                         texto_extraido = ""
@@ -487,8 +564,8 @@ with tabs[2]:
                                 texto = read_pdf(arquivo)
                                 texto_extraido += f"\n--- Conteúdo do PDF ({arquivo.name}) ---\n{texto}"
                             elif arquivo.name.lower().endswith((".xlsx", ".xls", ".csv")):
-                                texto = read_excel_or_csv(arquivo)
-                                texto_extraido += f"\n--- Conteúdo da Planilha ({arquivo.name}) ---\n{texto}"
+                                df_upload = read_excel_or_csv(arquivo)
+                                texto_extraido += f"\n--- Conteúdo da Planilha ({arquivo.name}) ---\n{df_upload.to_string(index=False)}"
 
                         if texto_extraido:
                             contents_payload.append(texto_extraido)
@@ -496,12 +573,12 @@ with tabs[2]:
                         escala_texto = f"Escala de Referência Visual: {scale_info}" if scale_info else "Nenhuma escala adicional informada."
 
                         prompt_orcamento = f"""
-Você é um Engenheiro de Processos e Orçamentista. Analise TODOS os documentos e imagens fornecidos.
+Você é um Engenheiro de Processos e Orçamentista sênior. Analise TODOS os documentos e imagens fornecidos.
 {escala_texto}
 
 OBJETIVO:
 Extrair e deduzir TODAS as informações dos componentes, incluindo chapas, estruturas, perfis, peças, acabamentos E FERRAGENS (parafusos, minifix, dobradiças, etc.).
-Para peças com dimensões lineares (comprimento e largura em mm), informe os números corretamente. Para ferragens unitárias, use "-" em COMP e LARG e informe a quantidade (QTD).
+Para peças lineares ou chapas, informe os valores numéricos exatos de comprimento e largura. Para ferragens unitárias, use "-".
 
 Gere OBRIGATORIAMENTE APENAS JSON VÁLIDO, sem Markdown, sem ```json.
 
@@ -521,6 +598,8 @@ ESTRUTURA EXATA:
   "pecas_para_desenho": [
     {{
       "nome": "BASE-FRONTAL",
+      "comp": 1100,
+      "larg": 90,
       "descricao": "Peça estrutural 1100x90mm com furação"
     }}
   ]
@@ -535,15 +614,16 @@ ESTRUTURA EXATA:
                         lista_materiais = dados_orcamento.get("lista_materiais", [])
                         pecas_desenho = dados_orcamento.get("pecas_para_desenho", [])
 
-                        # --- CÁLCULO AUTOMÁTICO DE APROVEITAMENTO DE CORTE ---
+                        # --- CÁLCULO DE APROVEITAMENTO E NESTING ---
                         area_chapa_unit = chapa_padrao_comp * chapa_padrao_larg
                         area_pecas_total = 0.0
-                        pecas_com_dimensoes = 0
+                        pecas_nesting = []
 
                         for item in lista_materiais:
                             c_str = str(item.get("COMP. (mm)", "-")).strip()
                             l_str = str(item.get("LARG. (mm)", "-")).strip()
                             q_str = str(item.get("QTD.", "1")).strip()
+                            desc = str(item.get("DESCRIÇÃO", "Peça"))
 
                             if c_str not in ["-", "", "NÃO INFORMADO"] and l_str not in ["-", "", "NÃO INFORMADO"]:
                                 try:
@@ -551,40 +631,76 @@ ESTRUTURA EXATA:
                                     l_val = float(l_str)
                                     q_val = float(q_str) if q_str.replace('.', '', 1).isdigit() else 1.0
                                     area_pecas_total += c_val * l_val * q_val
-                                    pecas_com_dimensoes += 1
+                                    pecas_nesting.append({"COMP": c_val, "LARG": l_val, "QTD": int(q_val), "NOME": desc})
                                 except ValueError:
                                     pass
 
                         aproveitamento_pct = (area_pecas_total / area_chapa_unit * 100) if area_chapa_unit > 0 else 0
                         chapas_estimadas = (area_pecas_total / area_chapa_unit) if area_chapa_unit > 0 else 0
 
+                        nesting_img_path = gerar_grafico_nesting_temp(chapa_padrao_comp, chapa_padrao_larg, pecas_nesting)
+
                         relatorio_aproveitamento = (
-                            f"\n\n--- ANÁLISE DE APROVEITAMENTO AUTOMÁTICO DE CORTE ---\n"
+                            f"\n\n--- ANÁLISE DE APROVEITAMENTO E NESTING DE CORTE ---\n"
                             f"Dimensão Base da Matéria-Prima: {chapa_padrao_comp} x {chapa_padrao_larg} mm\n"
                             f"Área Útil por Chapa: {area_chapa_unit/1e6:.2f} m²\n"
                             f"Área Total Requerida pelas Peças: {area_pecas_total/1e6:.2f} m²\n"
                             f"Aproveitamento Teórico Estimado: {aproveitamento_pct:.2f}%\n"
-                            f"Quantidade Estimada de Chapas Necessárias: {max(1.0, chapas_estimadas):.2f} chapas"
+                            f"Quantidade Estimada de Chapas Necessárias: {max(1.0, chapas_estimadas):.2f} unidades"
                         )
 
                         relatorio_completo_final = relatorio + relatorio_aproveitamento
 
-                        st.success("✅ Análise, extração de insumos e cálculo de aproveitamento gerados com sucesso!")
+                        st.success("✅ Análise, Planilha e Nesting gerados com sucesso!")
 
-                        st.markdown("### 📊 Relatório Técnico & Aproveitamento de Corte")
+                        st.markdown("### 📊 Relatório Técnico Comercial")
                         st.write(relatorio_completo_final)
 
-                        # Métricas visuais no Streamlit
+                        if nesting_img_path and os.path.exists(nesting_img_path):
+                            st.markdown("### 🗺️ Mapa Gráfico de Corte (Nesting)")
+                            st.image(nesting_img_path, use_container_width=True)
+
                         col_m1, col_m2 = st.columns(2)
                         with col_m1:
                             st.metric("Aproveitamento Teórico", f"{aproveitamento_pct:.2f}%")
                         with col_m2:
-                            st.metric("Chapas Estimadas (Teórico)", f"{max(1.0, chapas_estimadas):.2f}")
+                            st.metric("Chapas Estimadas", f"{max(1.0, chapas_estimadas):.2f}")
 
-                        st.markdown("### 🧱 Lista Completa de Insumos (Peças e Ferragens)")
+                        st.markdown("### 🧱 Planilha Real de Insumos (Formatada em Colunas)")
                         if lista_materiais:
                             df_materiais = pd.DataFrame(lista_materiais)
                             st.dataframe(df_materiais, use_container_width=True, hide_index=True)
+
+                            # Geração de Excel Real Estilizado com xlsxwriter
+                            excel_buffer = io.BytesIO()
+                            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                                df_materiais.to_excel(writer, index=False, sheet_name='Lista_Insumos')
+                                workbook = writer.book
+                                worksheet = writer.sheets['Lista_Insumos']
+                                
+                                header_format = workbook.add_format({
+                                    'bold': True,
+                                    'font_color': 'white',
+                                    'bg_color': '#0f172a',
+                                    'border': 1,
+                                    'align': 'center'
+                                })
+                                cell_format = workbook.add_format({
+                                    'border': 1,
+                                    'align': 'center'
+                                })
+                                for col_num, value in enumerate(df_materiais.columns.values):
+                                    worksheet.write(0, col_num, value, header_format)
+                                    worksheet.set_column(col_num, col_num, 22)
+                            excel_buffer.seek(0)
+
+                            st.download_button(
+                                label="📥 Baixar Planilha Real Formatada (.xlsx)",
+                                data=excel_buffer,
+                                file_name="Planilha_Insumos_Profissional.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                type="primary"
+                            )
                         else:
                             st.warning("A IA não retornou itens na lista de materiais.")
 
@@ -592,39 +708,40 @@ ESTRUTURA EXATA:
                         conteudo_orcamento = f"RELATÓRIO TÉCNICO DE ORÇAMENTO\n\n{relatorio_completo_final}\n\nLISTA DE MATERIAIS\n\n{materiais_json_orcamento}"
 
                         st.session_state.historico_projetos.append({
-                            "titulo": "Orçamento Técnico com Nesting",
+                            "titulo": "Orçamento Técnico Comercial",
                             "tipo": "Orçamento / Extração",
                             "resumo": str(relatorio)[:150],
                             "conteudo": conteudo_orcamento,
-                            "pecas": pecas_desenho
+                            "pecas": pecas_desenho,
+                            "nesting_img": nesting_img_path
                         })
 
-                        pdf_orcamento = criar_pdf_com_desenhos("ORCAMENTO TECNICO", conteudo_orcamento, pecas_desenho)
+                        pdf_orcamento = criar_pdf_relatorio_comercial("RELATÓRIO TÉCNICO E ORÇAMENTO", conteudo_orcamento, pecas_desenho, nesting_img_path)
 
                         st.download_button(
-                            "📄 Baixar Orçamento Técnico + Nesting em PDF",
+                            "📄 Baixar PDF Comercial Colorido (Apostila)",
                             data=pdf_orcamento,
-                            file_name="Orcamento_Com_Aproveitamento.pdf",
+                            file_name="Relatorio_Comercial_Colorido.pdf",
                             mime="application/pdf",
                             key="download_orcamento_pdf"
                         )
 
                     except Exception as e:
-                        st.error(f"Erro ao analisar documentos: {str(e)}")
+                        st.error(f"Erro ao processar documentos: {str(e)}")
 
 
 # ==============================================================================
 # ABA 4 — OTIMIZADOR DE CORTE (MANUAL)
 # ==============================================================================
 with tabs[3]:
-    st.subheader("✂️ Otimizador de Corte (Manual)")
+    st.subheader("✂️ Otimizador de Corte (Manual / Linear)")
     col_a, col_b, col_c = st.columns(3)
     with col_a:
-        chapa_comp = st.number_input("Comprimento da chapa (mm)", min_value=1.0, value=2750.0, step=10.0)
+        chapa_comp = st.number_input("Comprimento da chapa / barra (mm)", min_value=1.0, value=2750.0, step=10.0)
     with col_b:
-        chapa_larg = st.number_input("Largura da chapa (mm)", min_value=1.0, value=1850.0, step=10.0)
+        chapa_larg = st.number_input("Largura da chapa (mm) [Defina 0 para perfil linear]", min_value=0.0, value=1850.0, step=10.0)
     with col_c:
-        espessura = st.number_input("Espessura (mm)", min_value=0.1, value=15.0, step=0.5)
+        espessura = st.number_input("Espessura / Kerf (mm)", min_value=0.1, value=3.0, step=0.5)
 
     dados_corte = st.data_editor(
         pd.DataFrame([{"PEÇA": "Exemplo", "COMP. (mm)": 500, "LARG. (mm)": 300, "QTD.": 1}]),
@@ -634,16 +751,22 @@ with tabs[3]:
 
     if st.button("📐 Calcular Aproveitamento Manual"):
         try:
-            area_chapa = chapa_comp * chapa_larg
+            area_chapa = chapa_comp * (chapa_larg if chapa_larg > 0 else 1.0)
             area_total = 0.0
             for _, row in dados_corte.iterrows():
-                area_total += float(row["COMP. (mm)"]) * float(row["LARG. (mm)"]) * float(row["QTD."])
+                l_val = float(row["LARG. (mm)"]) if chapa_larg > 0 else 1.0
+                area_total += float(row["COMP. (mm)"]) * l_val * float(row["QTD."])
 
             aproveitamento = (area_total / area_chapa * 100) if area_chapa > 0 else 0
-            chapas_teoricas = (area_total / area_chapa) if area_chapa > 0 else 0
+            unidades_teoricas = (area_total / area_chapa) if area_chapa > 0 else 0
 
             st.metric("Aproveitamento teórico", f"{aproveitamento:.2f}%")
-            st.metric("Chapas teóricas", f"{chapas_teoricas:.2f}")
+            st.metric("Unidades/Chapas teóricas", f"{unidades_teoricas:.2f}")
+
+            img_nest = gerar_grafico_nesting_temp(chapa_comp, max(chapa_larg, 100.0), [{"COMP": r["COMP. (mm)"], "LARG": r["LARG. (mm)"], "QTD": r["QTD."], "NOME": r["PEÇA"]} for _, r in dados_corte.iterrows()])
+            if img_nest and os.path.exists(img_nest):
+                st.image(img_nest, use_container_width=True)
+                os.unlink(img_nest)
         except Exception as e:
             st.error(f"Erro no cálculo: {e}")
 
@@ -652,22 +775,22 @@ with tabs[3]:
 # ABA 5 — VÍDEOS & NARRAÇÃO
 # ==============================================================================
 with tabs[4]:
-    st.subheader("🎬 Vídeos & Narração")
-    texto_narracao = st.text_area("Texto para narração:", placeholder="Digite aqui o texto...")
+    st.subheader("🎬 Vídeos & Narração Comercial")
+    texto_narracao = st.text_area("Texto para narração do projeto:", placeholder="Digite aqui o resumo comercial...")
     idioma = st.selectbox("Idioma:", ["pt", "en", "es"])
 
-    if st.button("🔊 Gerar Narração"):
+    if st.button("🔊 Gerar Narração em Áudio"):
         if not texto_narracao.strip():
             st.warning("Digite um texto.")
         else:
             try:
-                with st.spinner("Gerando áudio..."):
+                with st.spinner("Sintetizando áudio comercial..."):
                     audio_buffer = io.BytesIO()
                     tts = gTTS(text=texto_narracao, lang=idioma)
                     tts.write_to_fp(audio_buffer)
                     audio_buffer.seek(0)
                 st.audio(audio_buffer, format="audio/mp3")
-                st.download_button("⬇️ Baixar MP3", data=audio_buffer.getvalue(), file_name="narracao.mp3", mime="application/mpeg")
+                st.download_button("⬇️ Baixar MP3", data=audio_buffer.getvalue(), file_name="narracao_comercial.mp3", mime="application/mpeg")
             except Exception as e:
                 st.error(f"Erro: {str(e)}")
 
