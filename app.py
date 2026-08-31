@@ -181,22 +181,34 @@ with tabs[1]:
                 prompt_draw = f"""
                 Atue como um gerador de gráficos Python (Matplotlib).
                 Crie APENAS um código Python funcional que use matplotlib.pyplot para desenhar um esquema técnico 2D cotado da peça: '{descricao_peca}'.
-                Regras:
-                - Use fundo escuro tipo blueprint (facecolor='#0a192f') e linhas em azul claro ou branco.
+                
+                REGRAS OBRIGATÓRIAS:
+                - Defina o tamanho da figura obrigatoriamente como: fig, ax = plt.subplots(figsize=(10, 6))
+                - Use fundo escuro estilo blueprint (facecolor='#0a192f') no fig e ax.
+                - Use linhas e textos em branco ou azul claro (ex: '#00d2ff').
                 - Inclua dimensões e cotas indicativas no desenho.
+                - NUNCA use plt.tight_layout().
                 - NÃO coloque explicações ou blocos ```python. Responda APENAS com o código puro.
                 """
                 try:
                     codigo_python = call_gemini(prompt_draw, gemini_key).replace("```python", "").replace("```", "").strip()
                     
-                    # Executa o código de desenho gerado pela IA
-                    fig, ax = plt.subplots(figsize=(8, 6))
+                    # Garante que figuras anteriores sejam limpas da memória
+                    plt.close('all')
+                    
+                    # Prepara o ambiente de execução seguro
+                    fig, ax = plt.subplots(figsize=(10, 6))
                     exec_globals = {"plt": plt, "fig": fig, "ax": ax}
+                    
                     exec(codigo_python, exec_globals)
-                    st.pyplot(plt.gcf())
-                    plt.close()
+                    
+                    # Renderiza no Streamlit expandindo na largura do container
+                    st.pyplot(plt.gcf(), use_container_width=True)
+                    plt.close('all')
+                    
                     st.success("Desenho Técnico Gerado com Sucesso!")
                 except Exception as e:
+                    plt.close('all')
                     st.error(f"Não foi possível desenhar a peça automaticamente. Erro: {str(e)}")
 
 # ------------------------------------------------------------------------------
