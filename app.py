@@ -19,7 +19,7 @@ import os
 # CONFIGURAÇÃO DA PÁGINA
 # ==============================================================================
 st.set_page_config(
-    page_title="Multi-Engine IA: Engenharia, Projetos & Orçamentos Pro",
+    page_title="Multi-Engine IA: CAD & Engenharia Industrial Pro",
     page_icon="⚡",
     layout="wide"
 )
@@ -69,7 +69,6 @@ read_pdf = ler_pdf
 
 
 def read_excel_or_csv(file):
-    """Lê CSV ou planilhas Excel estruturando perfeitamente em DataFrame."""
     try:
         nome = getattr(file, "name", "").lower()
         if nome.endswith(".csv"):
@@ -87,49 +86,74 @@ def read_excel_or_csv(file):
 
 
 # ==============================================================================
-# MOTOR CAD PROFISSIONAL (MÚLTIPLAS VISTAS, COTAS E FURAÇÕES TÉCNICAS)
+# MOTOR CAD DE ALTA PRECISÃO (VISTAS ORTOGONAIS, COTAS E MATRIZ DE FURAÇÃO)
 # ==============================================================================
-def gerar_desenho_cad_profissional(nome_peca, comp=1200, larg=600):
-    """Gera um desenho técnico CAD avançado com projeção ortogonal (Frontal e Lateral), eixos e furações."""
+def gerar_desenho_cad_industrial(nome_peca, comp=1200, larg=600):
+    """Gera um projeto CAD profissional com 3 painéis: Vista Frontal, Perfil Lateral e Matriz de Furação Técnica."""
     try:
         plt.close("all")
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5.5))
         fig.patch.set_facecolor("#0a192f")
         
-        for ax in [ax1, ax2]:
+        for ax in [ax1, ax2, ax3]:
             ax.set_facecolor("#0a192f")
-            ax.grid(True, color="#1e3a8a", linestyle="--", alpha=0.3)
+            ax.grid(True, color="#1e3a8a", linestyle=":", alpha=0.4)
 
-        # --- VISTA FRONTAL (CAD) ---
-        rect_front = patches.Rectangle((0.1, 0.2), 0.8, 0.6, linewidth=2, edgecolor="#00d2ff", facecolor="#172a45", hatch="//")
+        # --- PAINEL 1: VISTA FRONTAL COM COTAS ---
+        rect_front = patches.Rectangle((0.15, 0.2), 0.7, 0.6, linewidth=2, edgecolor="#38bdf8", facecolor="#1e293b", hatch="//")
         ax1.add_patch(rect_front)
         
-        # Furações e detalhes na vista frontal
-        ax1.add_patch(patches.Circle((0.2, 0.5), 0.03, facecolor="#ff4757", edgecolor="white"))
-        ax1.add_patch(patches.Circle((0.8, 0.5), 0.03, facecolor="#ff4757", edgecolor="white"))
-        
-        # Cotas Vista Frontal
-        ax1.annotate('', xy=(0.1, 0.12), xytext=(0.9, 0.12), arrowprops=dict(arrowstyle="<->", color="#ffa502", lw=1.5))
-        ax1.text(0.5, 0.06, f"COMPRIMENTO: {comp} mm", color="#ffa502", fontsize=10, ha="center", weight="bold")
+        # Furações (Minifix / Cavilhas)
+        ax1.add_patch(patches.Circle((0.25, 0.5), 0.035, facecolor="#ef4444", edgecolor="white", lw=1.2))
+        ax1.add_patch(patches.Circle((0.75, 0.5), 0.035, facecolor="#ef4444", edgecolor="white", lw=1.2))
+        ax1.text(0.25, 0.5, "Ø15", color="white", fontsize=6, ha="center", va="center", weight="bold")
+        ax1.text(0.75, 0.5, "Ø15", color="white", fontsize=6, ha="center", va="center", weight="bold")
+
+        # Linhas de Cota
+        ax1.annotate('', xy=(0.15, 0.12), xytext=(0.85, 0.12), arrowprops=dict(arrowstyle="<->", color="#fbbf24", lw=1.5))
+        ax1.text(0.5, 0.06, f"COMP: {comp} mm", color="#fbbf24", fontsize=9, ha="center", weight="bold")
         
         ax1.set_xlim(0, 1)
         ax1.set_ylim(0, 1)
-        ax1.set_title(f"VISTA FRONTAL: {str(nome_peca).upper()}", color="white", fontsize=11, weight="bold")
+        ax1.set_title("VISTA FRONTAL & USINAGEM", color="white", fontsize=10, weight="bold")
         ax1.axis("off")
 
-        # --- VISTA LATERAL / CORTE (CAD) ---
-        rect_side = patches.Rectangle((0.3, 0.2), 0.4, 0.6, linewidth=2, edgecolor="#00d2ff", facecolor="#1e293b")
+        # --- PAINEL 2: VISTA LATERAL / CORTE ---
+        rect_side = patches.Rectangle((0.35, 0.2), 0.3, 0.6, linewidth=2, edgecolor="#38bdf8", facecolor="#334155")
         ax2.add_patch(rect_side)
         
-        ax2.annotate('', xy=(0.2, 0.2), xytext=(0.2, 0.8), arrowprops=dict(arrowstyle="<->", color="#ffa502", lw=1.5))
-        ax2.text(0.1, 0.5, f"LARG: {larg} mm", color="#ffa502", fontsize=10, ha="center", rotation=90, weight="bold")
+        ax2.annotate('', xy=(0.25, 0.2), xytext=(0.25, 0.8), arrowprops=dict(arrowstyle="<->", color="#fbbf24", lw=1.5))
+        ax2.text(0.12, 0.5, f"LARG:\n{larg} mm", color="#fbbf24", fontsize=9, ha="center", weight="bold")
         
         ax2.set_xlim(0, 1)
         ax2.set_ylim(0, 1)
-        ax2.set_title("VISTA LATERAL / PERFIL", color="white", fontsize=11, weight="bold")
+        ax2.set_title("PERFIL / ESPESSURA", color="white", fontsize=10, weight="bold")
         ax2.axis("off")
 
-        plt.suptitle(f"DETALHAMENTO TÉCNICO CAD • {str(nome_peca).upper()}", color="#38bdf8", fontsize=14, weight="bold", y=0.95)
+        # --- PAINEL 3: MATRIZ DE COORDENADAS DE FURAÇÃO ---
+        ax3.text(0.05, 0.85, "TABELA DE FUROS (CNC)", color="#38bdf8", fontsize=10, weight="bold")
+        tabela_dados = [
+            ["Furo", "X (mm)", "Y (mm)", "Tipo", "Diâmetro"],
+            ["H1", "50.0", f"{larg/2}", "Minifix", "Ø15mm"],
+            ["H2", f"{comp-50}", f"{larg/2}", "Minifix", "Ø15mm"],
+            ["C1", "32.0", "9.0", "Cavilha", "Ø8mm"],
+            ["C2", f"{comp-32}", "9.0", "Cavilha", "Ø8mm"]
+        ]
+        
+        y_pos = 0.65
+        for row in tabela_dados:
+            x_pos = 0.05
+            for col in row:
+                ax3.text(x_pos, y_pos, col, color="white" if y_pos == 0.65 else "#cbd5e1", fontsize=8, weight="bold" if y_pos == 0.65 else "normal")
+                x_pos += 0.2
+            y_pos -= 0.12
+            
+        ax3.set_xlim(0, 1)
+        ax3.set_ylim(0, 1)
+        ax3.set_title("MATRIZ CNC", color="white", fontsize=10, weight="bold")
+        ax3.axis("off")
+
+        plt.suptitle(f"DETALHAMENTO TÉCNICO CAD • {str(nome_peca).upper()}", color="#38bdf8", fontsize=13, weight="bold", y=0.96)
 
         tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
         tmp_file.close()
@@ -142,7 +166,7 @@ def gerar_desenho_cad_profissional(nome_peca, comp=1200, larg=600):
 
 
 # ==============================================================================
-# MAPA GRÁFICO DE NESTING (APROVEITAMENTO DE CORTE EM CHAPAS)
+# MOTOR DE NESTING GRÁFICO (APROVEITAMENTO DE CORTE)
 # ==============================================================================
 def gerar_grafico_nesting_temp(chapa_c=2750, chapa_l=1850, lista_pecas=None):
     try:
@@ -173,7 +197,6 @@ def gerar_grafico_nesting_temp(chapa_c=2750, chapa_l=1850, lista_pecas=None):
                     curr_x = 60.0
                     curr_y += max_row_h + 60.0
                     max_row_h = 0.0
-
                 if curr_y + l > chapa_l - 60:
                     break
 
@@ -203,12 +226,11 @@ def gerar_grafico_nesting_temp(chapa_c=2750, chapa_l=1850, lista_pecas=None):
 
 
 # ==============================================================================
-# GERAÇÃO DE PDF COMERCIAL COLORIDO (PADRÃO APOSTILA / MANUAL CORPORATIVO)
+# GERAÇÃO DE PDF APOSTILA COMERCIAL COLORIDO
 # ==============================================================================
 class PDFComercialColorido(FPDF):
     def header(self):
-        # Cabeçalho corporativo com faixa azul
-        self.set_fill_color(15, 23, 42) # Azul escuro
+        self.set_fill_color(15, 23, 42)
         self.rect(0, 0, 210, 22, 'F')
         self.set_font("Helvetica", "B", 10)
         self.set_text_color(255, 255, 255)
@@ -230,16 +252,14 @@ def criar_pdf_relatorio_comercial(titulo, conteudo_texto, lista_pecas_desenho=No
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # Título Principal do Relatório
     pdf.set_font("Helvetica", "B", 16)
     pdf.set_text_color(15, 23, 42)
     pdf.cell(0, 10, str(titulo).encode("latin-1", "replace").decode("latin-1"), 0, 1, "L")
-    pdf.set_draw_color(56, 189, 248) # Azul claro
+    pdf.set_draw_color(56, 189, 248)
     pdf.set_line_width(1)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(8)
 
-    # Bloco Executivo / Resumo Técnico com fundo colorido simulado
     pdf.set_font("Helvetica", size=10)
     pdf.set_text_color(50, 50, 50)
     largura_util = pdf.epw
@@ -261,7 +281,6 @@ def criar_pdf_relatorio_comercial(titulo, conteudo_texto, lista_pecas_desenho=No
         except Exception:
             pdf.multi_cell(largura_util, 5.5, "[Linha omitida]", 0, "L")
 
-    # Inclusão do Mapa Gráfico de Nesting no PDF
     if grafico_nesting_path and os.path.exists(grafico_nesting_path):
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 14)
@@ -274,30 +293,28 @@ def criar_pdf_relatorio_comercial(titulo, conteudo_texto, lista_pecas_desenho=No
         except Exception:
             pass
 
-    # Inclusão dos Desenhos Técnicos CAD Multivistas no PDF
     if lista_pecas_desenho:
-        pdf.add_page()
-        pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(15, 23, 42)
-        pdf.cell(0, 10, "CATÁLOGO DE DETALHAMENTO CAD (VISTAS ORTOGONAIS)", 0, 1, "C")
-        pdf.ln(5)
-
         for peca in lista_pecas_desenho:
             if not isinstance(peca, dict):
                 continue
+            pdf.add_page()
             nome = peca.get("nome", "Peça")
             comp = peca.get("comp", 1200)
             larg = peca.get("larg", 600)
 
-            pdf.set_font("Helvetica", "B", 11)
-            pdf.set_text_color(30, 58, 138)
-            pdf.cell(largura_util, 7, f"Componente: {str(nome)} ({comp} x {larg} mm)", 0, 1, "L")
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.set_text_color(15, 23, 42)
+            pdf.cell(0, 10, f"DETALHAMENTO CAD: {str(nome).upper()}", 0, 1, "C")
+            pdf.set_font("Helvetica", size=10)
+            pdf.set_text_color(100, 100, 100)
+            pdf.cell(0, 6, f"Dimensões Principais: {comp} x {larg} mm", 0, 1, "C")
+            pdf.ln(5)
 
-            img_cad = gerar_desenho_cad_profissional(nome, comp, larg)
+            img_cad = gerar_desenho_cad_industrial(nome, comp, larg)
             if img_cad and os.path.exists(img_cad):
                 try:
-                    pdf.image(img_cad, w=175)
-                    pdf.ln(8)
+                    pdf.image(img_cad, w=185)
+                    pdf.ln(5)
                 except Exception:
                     pass
                 finally:
@@ -405,7 +422,7 @@ st.title("⚡ Multi-Engine IA: Invenções & Engenharia Pro")
 
 tabs = st.tabs([
     "🧪 Agentes de Invenção",
-    "📐 CAD Pro (Múltiplas Vistas)",
+    "📐 CAD Pro (Multivistas & CNC)",
     "📋 Orçamentos, Planilha Real & Nesting",
     "✂️ Otimizador de Corte",
     "🎬 Vídeos & Narração"
@@ -503,10 +520,10 @@ Estrutura obrigatória:
 
 
 # ==============================================================================
-# ABA 2 — CAD PRO (MÚLTIPLAS VISTAS)
+# ABA 2 — CAD PRO (MULTIVISTAS & CNC)
 # ==============================================================================
 with tabs[1]:
-    st.subheader("📐 CAD Pro: Gerador de Desenhos Técnicos Multivistas (Estilo AutoCAD)")
+    st.subheader("📐 CAD Pro: Gerador de Desenhos Técnicos Multivistas & Matriz CNC")
     col_d1, col_d2 = st.columns(2)
     with col_d1:
         peca_nome_input = st.text_input("Nome da Peça CAD:", value="Lateral de Gabinete")
@@ -514,17 +531,17 @@ with tabs[1]:
         dim_comp = st.number_input("Comprimento (mm):", min_value=10.0, value=1200.0, step=50.0)
         dim_larg = st.number_input("Largura (mm):", min_value=10.0, value=600.0, step=50.0)
 
-    if st.button("🎨 Renderizar Desenho CAD Multivistas"):
+    if st.button("🎨 Renderizar Desenho CAD Industrial"):
         if not peca_nome_input.strip():
             st.warning("Informe o nome da peça.")
         else:
-            with st.spinner("Gerando projeções ortogonais CAD..."):
+            with st.spinner("Gerando projeções ortogonais e tabela CNC..."):
                 try:
-                    img_path = gerar_desenho_cad_profissional(peca_nome_input, dim_comp, dim_larg)
+                    img_path = gerar_desenho_cad_industrial(peca_nome_input, dim_comp, dim_larg)
                     if img_path and os.path.exists(img_path):
-                        st.image(img_path, caption=f"CAD Multivistas: {peca_nome_input}", use_container_width=True)
+                        st.image(img_path, caption=f"CAD Industrial Multivistas: {peca_nome_input}", use_container_width=True)
                         os.unlink(img_path)
-                    st.success("Desenho CAD gerado com sucesso!")
+                    st.success("Desenho CAD industrial gerado com sucesso!")
                 except Exception as e:
                     st.error(f"Erro ao renderizar CAD: {e}")
 
@@ -614,7 +631,6 @@ ESTRUTURA EXATA:
                         lista_materiais = dados_orcamento.get("lista_materiais", [])
                         pecas_desenho = dados_orcamento.get("pecas_para_desenho", [])
 
-                        # --- CÁLCULO DE APROVEITAMENTO E NESTING ---
                         area_chapa_unit = chapa_padrao_comp * chapa_padrao_larg
                         area_pecas_total = 0.0
                         pecas_nesting = []
@@ -671,7 +687,6 @@ ESTRUTURA EXATA:
                             df_materiais = pd.DataFrame(lista_materiais)
                             st.dataframe(df_materiais, use_container_width=True, hide_index=True)
 
-                            # Geração de Excel Real Estilizado com xlsxwriter
                             excel_buffer = io.BytesIO()
                             with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
                                 df_materiais.to_excel(writer, index=False, sheet_name='Lista_Insumos')
@@ -682,10 +697,6 @@ ESTRUTURA EXATA:
                                     'bold': True,
                                     'font_color': 'white',
                                     'bg_color': '#0f172a',
-                                    'border': 1,
-                                    'align': 'center'
-                                })
-                                cell_format = workbook.add_format({
                                     'border': 1,
                                     'align': 'center'
                                 })
