@@ -86,9 +86,10 @@ def read_excel_or_csv(file):
 
 
 # ==============================================================================
-# MOTOR CAD DE ALTA PRECISÃO (VISTAS ORTOGONAIS, COTAS E MATRIZ DE FURAÇÃO)
+# MOTOR CAD INTELIGENTE (ADAPTADO AO MATERIAL E USINAGEM ESPECÍFICA)
 # ==============================================================================
-def gerar_desenho_cad_industrial(nome_peca, comp=1200, larg=600):
+def gerar_desenho_cad_industrial(nome_peca, comp=1200, larg=600, material="MDF", usinagem_desc="Padrão"):
+    """Gera um projeto CAD profissional adaptado ao material (evitando furos em acrílico/vidro)."""
     try:
         plt.close("all")
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5.5))
@@ -98,25 +99,53 @@ def gerar_desenho_cad_industrial(nome_peca, comp=1200, larg=600):
             ax.set_facecolor("#0a192f")
             ax.grid(True, color="#1e3a8a", linestyle=":", alpha=0.4)
 
-        # VISTA FRONTAL
-        rect_front = patches.Rectangle((0.15, 0.2), 0.7, 0.6, linewidth=2, edgecolor="#38bdf8", facecolor="#1e293b", hatch="//")
+        mat_lower = str(material).lower()
+        is_transparente = any(m in mat_lower for m in ["acrílico", "acrilico", "vidro", "policarbonato"])
+        is_metal = any(m in mat_lower for m in ["aço", "aco", "aluminio", "alumínio", "ferro", "inox"])
+
+        # Cor e textura da peça base
+        face_col = "#1e293b" if not is_transparente else "#38bdf8"
+        alpha_val = 0.9 if not is_transparente else 0.35
+        hatch_val = "//" if not is_transparente else None
+
+        # --- PAINEL 1: VISTA FRONTAL COM COTAS ---
+        rect_front = patches.Rectangle((0.15, 0.2), 0.7, 0.6, linewidth=2, edgecolor="#38bdf8", facecolor=face_col, alpha=alpha_val, hatch=hatch_val)
         ax1.add_patch(rect_front)
         
-        ax1.add_patch(patches.Circle((0.25, 0.5), 0.035, facecolor="#ef4444", edgecolor="white", lw=1.2))
-        ax1.add_patch(patches.Circle((0.75, 0.5), 0.035, facecolor="#ef4444", edgecolor="white", lw=1.2))
-        ax1.text(0.25, 0.5, "Ø15", color="white", fontsize=6, ha="center", va="center", weight="bold")
-        ax1.text(0.75, 0.5, "Ø15", color="white", fontsize=6, ha="center", va="center", weight="bold")
+        # Adiciona furações somente se não for acrílico/vidro sem furos
+        furos_cnc = []
+        us_lower = str(usinagem_desc).lower()
+        if not is_transparente and ("minifix" in us_lower or "cavilha" in us_lower or "furação" in us_lower or "padrão" in us_lower):
+            ax1.add_patch(patches.Circle((0.25, 0.5), 0.035, facecolor="#ef4444", edgecolor="white", lw=1.2))
+            ax1.add_patch(patches.Circle((0.75, 0.5), 0.035, facecolor="#ef4444", edgecolor="white", lw=1.2))
+            ax1.text(0.25, 0.5, "Ø15", color="white", fontsize=6, ha="center", va="center", weight="bold")
+            ax1.text(0.75, 0.5, "Ø15", color="white", fontsize=6, ha="center", va="center", weight="bold")
+            furos_cnc = [
+                ["H1", "50.0", f"{larg/2}", "Minifix", "Ø15mm"],
+                ["H2", f"{comp-50}", f"{larg/2}", "Minifix", "Ø15mm"]
+            ]
+        elif is_metal:
+            # Furos de solda ou fixação metálica
+            ax1.add_patch(patches.Circle((0.2, 0.5), 0.025, facecolor="#fbbf24", edgecolor="white"))
+            ax1.add_patch(patches.Circle((0.8, 0.5), 0.025, facecolor="#fbbf24", edgecolor="white"))
+            furos_cnc = [
+                ["F1", "40.0", f"{larg/2}", "Furo Broca", "Ø6mm"],
+                ["F2", f"{comp-40}", f"{larg/2}", "Furo Broca", "Ø6mm"]
+            ]
+        else:
+            furos_cnc = [["N/A", "-", "-", "Sem Usinagem", "Corte Reto"]]
 
+        # Linhas de Cota
         ax1.annotate('', xy=(0.15, 0.12), xytext=(0.85, 0.12), arrowprops=dict(arrowstyle="<->", color="#fbbf24", lw=1.5))
         ax1.text(0.5, 0.06, f"COMP: {comp} mm", color="#fbbf24", fontsize=9, ha="center", weight="bold")
         
         ax1.set_xlim(0, 1)
         ax1.set_ylim(0, 1)
-        ax1.set_title("VISTA FRONTAL & USINAGEM", color="white", fontsize=10, weight="bold")
+        ax1.set_title(f"VISTA FRONTAL ({material})", color="white", fontsize=10, weight="bold")
         ax1.axis("off")
 
-        # VISTA LATERAL / CORTE
-        rect_side = patches.Rectangle((0.35, 0.2), 0.3, 0.6, linewidth=2, edgecolor="#38bdf8", facecolor="#334155")
+        # --- PAINEL 2: VISTA LATERAL / PERFIL ---
+        rect_side = patches.Rectangle((0.35, 0.2), 0.3, 0.6, linewidth=2, edgecolor="#38bdf8", facecolor="#334155", alpha=alpha_val)
         ax2.add_patch(rect_side)
         
         ax2.annotate('', xy=(0.25, 0.2), xytext=(0.25, 0.8), arrowprops=dict(arrowstyle="<->", color="#fbbf24", lw=1.5))
@@ -127,27 +156,21 @@ def gerar_desenho_cad_industrial(nome_peca, comp=1200, larg=600):
         ax2.set_title("PERFIL / ESPESSURA", color="white", fontsize=10, weight="bold")
         ax2.axis("off")
 
-        # MATRIZ CNC
-        ax3.text(0.05, 0.85, "TABELA DE FUROS (CNC)", color="#38bdf8", fontsize=10, weight="bold")
-        tabela_dados = [
-            ["Furo", "X (mm)", "Y (mm)", "Tipo", "Diâmetro"],
-            ["H1", "50.0", f"{larg/2}", "Minifix", "Ø15mm"],
-            ["H2", f"{comp-50}", f"{larg/2}", "Minifix", "Ø15mm"],
-            ["C1", "32.0", "9.0", "Cavilha", "Ø8mm"],
-            ["C2", f"{comp-32}", "9.0", "Cavilha", "Ø8mm"]
-        ]
+        # --- PAINEL 3: MATRIZ DE COORDENADAS DE FURAÇÃO ---
+        ax3.text(0.05, 0.85, "TABELA DE USINAGEM (CNC)", color="#38bdf8", fontsize=10, weight="bold")
+        tabela_dados = [["Ref", "X (mm)", "Y (mm)", "Operação", "Ferramenta"]] + furos_cnc
         
         y_pos = 0.65
         for row in tabela_dados:
             x_pos = 0.05
             for col in row:
-                ax3.text(x_pos, y_pos, col, color="white" if y_pos == 0.65 else "#cbd5e1", fontsize=8, weight="bold" if y_pos == 0.65 else "normal")
+                ax3.text(x_pos, y_pos, str(col), color="white" if y_pos == 0.65 else "#cbd5e1", fontsize=7.5, weight="bold" if y_pos == 0.65 else "normal")
                 x_pos += 0.2
             y_pos -= 0.12
             
         ax3.set_xlim(0, 1)
         ax3.set_ylim(0, 1)
-        ax3.set_title("MATRIZ CNC", color="white", fontsize=10, weight="bold")
+        ax3.set_title("MATRIZ CNC / CORTE", color="white", fontsize=10, weight="bold")
         ax3.axis("off")
 
         plt.suptitle(f"DETALHAMENTO TÉCNICO CAD • {str(nome_peca).upper()}", color="#38bdf8", fontsize=13, weight="bold", y=0.96)
@@ -298,16 +321,18 @@ def criar_pdf_relatorio_comercial(titulo, conteudo_texto, lista_pecas_desenho=No
             nome = peca.get("nome", "Peça")
             comp = peca.get("comp", 1200)
             larg = peca.get("larg", 600)
+            mat = peca.get("material", "MDF")
+            desc = peca.get("descricao", "Padrão")
 
             pdf.set_font("Helvetica", "B", 14)
             pdf.set_text_color(15, 23, 42)
             pdf.cell(0, 10, f"DETALHAMENTO CAD: {str(nome).upper()}", 0, 1, "C")
             pdf.set_font("Helvetica", size=10)
             pdf.set_text_color(100, 100, 100)
-            pdf.cell(0, 6, f"Dimensões Principais: {comp} x {larg} mm", 0, 1, "C")
+            pdf.cell(0, 6, f"Material: {mat} | Dimensões: {comp} x {larg} mm", 0, 1, "C")
             pdf.ln(5)
 
-            img_cad = gerar_desenho_cad_industrial(nome, comp, larg)
+            img_cad = gerar_desenho_cad_industrial(nome, comp, larg, mat, desc)
             if img_cad and os.path.exists(img_cad):
                 try:
                     pdf.image(img_cad, w=185)
@@ -419,7 +444,7 @@ st.title("⚡ Multi-Engine IA: Invenções & Engenharia Pro")
 
 tabs = st.tabs([
     "🧪 Agentes de Invenção",
-    "📐 CAD Pro (Multivistas & CNC em Lote)",
+    "📐 CAD Pro (Multivistas & CNC Inteligente)",
     "📋 Orçamentos, Planilha Real & Nesting",
     "✂️ Otimizador de Corte",
     "🎬 Vídeos & Narração"
@@ -472,7 +497,7 @@ Estrutura obrigatória:
       "COMP. (mm)": "100",
       "LARG. (mm)": "50",
       "QTD.": "4",
-      "MATERIAL": "Aço/MDF/Plástico"
+      "MATERIAL": "Aço/MDF/Plástico/Acrílico"
     }}
   ],
   "pecas_para_desenho": [
@@ -480,7 +505,8 @@ Estrutura obrigatória:
       "nome": "Nome da Peça",
       "comp": 100,
       "larg": 50,
-      "descricao": "Detalhes geométricos com cotas e furações"
+      "material": "MDF ou Acrílico ou Aço",
+      "descricao": "Especificar se tem furação ou não"
     }}
   ]
 }}
@@ -517,11 +543,11 @@ Estrutura obrigatória:
 
 
 # ==============================================================================
-# ABA 2 — CAD PRO (MULTIVISTAS, CNC EM LOTE & UPLOAD DE RENDERS/PROJETOS)
+# ABA 2 — CAD PRO (MULTIVISTAS, CNC INTELIGENTE & UPLOAD)
 # ==============================================================================
 with tabs[1]:
-    st.subheader("📐 CAD Pro: Geração em Lote de Desenhos Multivistas & Análise de Renders/Projetos")
-    st.markdown("Envie uma **Imagem de Render/Planta**, um **Arquivo de Projeto (.json)** ou utilize o modo manual para gerar todos os desenhos CAD e tabelas CNC de uma só vez.")
+    st.subheader("📐 CAD Pro: Geração em Lote de Desenhos & Análise Inteligente de Materiais")
+    st.markdown("Envie uma **Imagem de Render/Planta**, um **Arquivo de Projeto (.json)** ou utilize o modo manual definindo o material correto (evitando furos em acrílico/vidro).")
 
     cad_modo = st.radio("Selecione o modo de entrada:", ["📁 Importar Arquivo de Projeto / Imagem de Render", "⚙️ Modo Manual Peça Única"], horizontal=True)
 
@@ -533,7 +559,7 @@ with tabs[1]:
                 if not gemini_key:
                     st.error("Insira a chave Gemini na barra lateral.")
                 else:
-                    with st.spinner("Analisando render/projeto, deduzindo dimensões e gerando desenhos industriais..."):
+                    with st.spinner("Analisando render/projeto, identificando materiais corretos e gerando desenhos industriais..."):
                         try:
                             pecas_lote = []
                             if arquivo_cad.type.startswith("image"):
@@ -542,12 +568,13 @@ with tabs[1]:
                                 
                                 prompt_visao = """
                                 Analise esta imagem de render ou projeto industrial. 
-                                Deduza as principais peças estruturais componentes e retorne APENAS um JSON válido contendo uma lista de peças, sem markdown.
-                                Estrutura:
+                                Deduza as peças, dimensões e materiais reais (ex: MDF, Acrílico, Aço, Vidro).
+                                Se for acrílico ou vidro, especifique que não usa minifix/cavilha.
+                                Retorne APENAS um JSON válido, sem markdown:
                                 {
                                   "pecas_para_desenho": [
-                                    {"nome": "Nome da Peça 1", "comp": 1200, "larg": 600, "descricao": "Especificação"},
-                                    {"nome": "Nome da Peça 2", "comp": 800, "larg": 400, "descricao": "Especificação"}
+                                    {"nome": "Painel Acrílico", "comp": 1200, "larg": 600, "material": "Acrílico", "descricao": "Sem furação de marcenaria"},
+                                    {"nome": "Lateral MDF", "comp": 800, "larg": 400, "material": "MDF", "descricao": "Com furação Minifix"}
                                   ]
                                 }
                                 """
@@ -560,7 +587,7 @@ with tabs[1]:
                                 pecas_lote = conteudo_json.get("pecas_para_desenho", [])
                             elif arquivo_cad.type == "application/pdf":
                                 texto_pdf = read_pdf(arquivo_cad)
-                                prompt_pdf = f"Extraia a lista de peças com nome, comp, larg do texto abaixo e retorne APENAS JSON puro:\n{texto_pdf}\nFormato: {{\"pecas_para_desenho\": [{{\"nome\": \"\", \"comp\": 100, \"larg\": 100}}]}}"
+                                prompt_pdf = f"Extraia a lista de peças com nome, comp, larg, material do texto abaixo e retorne APENAS JSON puro:\n{texto_pdf}\nFormato: {{\"pecas_para_desenho\": [{{\"nome\": \"\", \"comp\": 100, \"larg\": 100, \"material\": \"MDF\", \"descricao\": \"\"}}]}}"
                                 res_pdf = call_gemini(prompt_pdf, gemini_key)
                                 pecas_lote = json.loads(extrair_json_seguro(res_pdf)).get("pecas_para_desenho", [])
 
@@ -570,10 +597,12 @@ with tabs[1]:
                                     nome = p.get("nome", "Componente")
                                     c = float(p.get("comp", 1000))
                                     l = float(p.get("larg", 500))
+                                    mat = p.get("material", "MDF")
+                                    desc = p.get("descricao", "Padrão")
                                     
                                     st.markdown(f"---")
-                                    st.markdown(f"### ⚙️ Detalhamento CAD: **{nome}** ({c}x{l} mm)")
-                                    img_c = gerar_desenho_cad_industrial(nome, c, l)
+                                    st.markdown(f"### ⚙️ Detalhamento CAD: **{nome}** | Material: **{mat}** ({c}x{l} mm)")
+                                    img_c = gerar_desenho_cad_industrial(nome, c, l, mat, desc)
                                     if img_c and os.path.exists(img_c):
                                         st.image(img_c, use_container_width=True)
                                         os.unlink(img_c)
@@ -583,24 +612,28 @@ with tabs[1]:
                             st.error(f"Erro ao processar arquivo CAD: {str(e)}")
 
     else:
-        col_d1, col_d2 = st.columns(2)
+        col_d1, col_d2, col_d3 = st.columns(3)
         with col_d1:
-            peca_nome_input = st.text_input("Nome da Peça CAD:", value="Lateral de Gabinete")
+            peca_nome_input = st.text_input("Nome da Peça CAD:", value="Painel Frontal")
         with col_d2:
+            mat_input = st.selectbox("Material:", ["MDF 15mm", "Acrílico 6mm", "Aço Inox", "Vidro Temperado", "Alumínio"])
+        with col_d3:
             dim_comp = st.number_input("Comprimento (mm):", min_value=10.0, value=1200.0, step=50.0)
             dim_larg = st.number_input("Largura (mm):", min_value=10.0, value=600.0, step=50.0)
 
-        if st.button("🎨 Renderizar Desenho CAD Industrial"):
+        desc_input = st.text_input("Usinagem / Observação:", value="Padrão de montagem adequado ao material")
+
+        if st.button("🎨 Renderizar Desenho CAD Inteligente"):
             if not peca_nome_input.strip():
                 st.warning("Informe o nome da peça.")
             else:
-                with st.spinner("Gerando projeções ortogonais e tabela CNC..."):
+                with st.spinner("Gerando projeções ortogonais e matriz CNC adaptada ao material..."):
                     try:
-                        img_path = gerar_desenho_cad_industrial(peca_nome_input, dim_comp, dim_larg)
+                        img_path = gerar_desenho_cad_industrial(peca_nome_input, dim_comp, dim_larg, mat_input, desc_input)
                         if img_path and os.path.exists(img_path):
-                            st.image(img_path, caption=f"CAD Industrial Multivistas: {peca_nome_input}", use_container_width=True)
+                            st.image(img_path, caption=f"CAD Industrial: {peca_nome_input} ({mat_input})", use_container_width=True)
                             os.unlink(img_path)
-                        st.success("Desenho CAD industrial gerado com sucesso!")
+                        st.success("Desenho CAD gerado com sucesso!")
                     except Exception as e:
                         st.error(f"Erro ao renderizar CAD: {e}")
 
@@ -654,7 +687,7 @@ Você é um Engenheiro de Processos e Orçamentista sênior. Analise TODOS os do
 
 OBJETIVO:
 Extrair e deduzir TODAS as informações dos componentes, incluindo chapas, estruturas, perfis, peças, acabamentos E FERRAGENS (parafusos, minifix, dobradiças, etc.).
-Para peças lineares ou chapas, informe os valores numéricos exatos de comprimento e largura. Para ferragens unitárias, use "-".
+Identifique corretamente o MATERIAL de cada peça (ex: MDF, Acrílico, Aço, Vidro) sem inventar furações para acrílico ou vidro.
 
 Gere OBRIGATORIAMENTE APENAS JSON VÁLIDO, sem Markdown, sem ```json.
 
@@ -664,19 +697,20 @@ ESTRUTURA EXATA:
   "lista_materiais": [
     {{
       "ITEM": "1",
-      "DESCRIÇÃO": "BASE-FRONTAL",
+      "DESCRIÇÃO": "PAINEL-ACRILICO",
       "COMP. (mm)": "1100",
       "LARG. (mm)": "90",
       "QTD.": "2",
-      "MATERIAL": "MDF GRAFITE MATT 15MM"
+      "MATERIAL": "ACRÍLICO 6MM"
     }}
   ],
   "pecas_para_desenho": [
     {{
-      "nome": "BASE-FRONTAL",
+      "nome": "PAINEL-ACRILICO",
       "comp": 1100,
       "larg": 90,
-      "descricao": "Peça estrutural 1100x90mm com furação"
+      "material": "Acrílico 6mm",
+      "descricao": "Corte reto sem furação de marcenaria"
     }}
   ]
 }}
