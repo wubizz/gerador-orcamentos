@@ -1,213 +1,162 @@
 import streamlit as st
 import pandas as pd
+import requests
 from PIL import Image
 import pypdf
 from google import genai
 
-# Configuração da página no Streamlit
+# Configuração da página
 st.set_page_config(
-    page_title="Plataforma de Engenharia, Invenções & Orçamentos",
-    page_icon="⚡",
+    page_title="Multi-AI Online Engine",
+    page_icon="🤖",
     layout="wide"
 )
 
-# Barra lateral para configuração da chave API e Parâmetros
+# Sidebar para chaves de API
 with st.sidebar:
-    st.header("🔑 Configurações")
-    gemini_key = st.text_input("Chave de API do Google Gemini:", type="password")
+    st.header("🔑 Chaves de API Gratuitas (Nuvem)")
+    gemini_key = st.text_input("1. Google Gemini API Key:", type="password")
+    groq_key = st.text_input("2. Groq API Key:", type="password")
+    openrouter_key = st.text_input("3. OpenRouter API Key (Opcional):", type="password")
+    hf_key = st.text_input("4. Hugging Face Token (Opcional):", type="password")
     
     st.divider()
-    st.info("Obtenha sua chave de API gratuitamente em: https://aistudio.google.com/")
-
-# Funções auxiliares para leitura de arquivos
-def read_pdf(file):
-    reader = pypdf.PdfReader(file)
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text() or ""
-    return text
-
-def read_excel_or_csv(file):
-    try:
-        if file.name.endswith('.csv'):
-            return pd.read_csv(file).to_string()
-        return pd.read_excel(file).to_string()
-    except Exception as e:
-        return f"Erro ao ler planilha: {str(e)}"
-
-# NAVEGAÇÃO POR ABAS
-tab_inventor, tab_orcamento = st.tabs([
-    "🤖 Agentes Autônomos de Invenção", 
-    "📋 Gerador de Orçamentos Técnicos"
-])
-
-# ==============================================================================
-# ABA 1: AGENTES AUTÔNOMOS PARA INVENÇÃO (NATIVO GEMINI)
-# ==============================================================================
-with tab_inventor:
-    st.title("🧪 Laboratório Multiagente de Invenções & Prototipagem")
     st.markdown("""
-    Nesta seção, uma equipe de **3 Agentes Especialistas de IA** atuam em sequência autônoma para transformar
-    qualquer ideia em um **dossiê técnico completo**, incluindo fórmula/esquemático e guia de prototipagem.
+    **Links para obter as chaves grátis:**
+    * [Google AI Studio](https://aistudio.google.com/)
+    * [Groq Cloud](https://console.groq.com/)
+    * [OpenRouter](https://openrouter.ai/)
+    * [Hugging Face](https://huggingface.co/settings/tokens)
     """)
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        ideia_usuario = st.text_area(
-            "Descreva a sua ideia de invenção:",
-            height=150,
-            placeholder="Ex: Um perfume biomimético com fixação estendida por microcápsulas de alginato..."
+# Funções para chamada das APIs gratuitas online
+def call_gemini(prompt, api_key, model="gemini-2.5-flash"):
+    client = genai.Client(api_key=api_key)
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt
+    )
+    return response.text
+
+def call_groq(prompt, api_key, model="llama-3.3-70b-versatile"):
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7
+    }
+    res = requests.post(url, json=payload, headers=headers)
+    if res.status_code == 200:
+        return res.json()['choices'][0]['message']['content']
+    else:
+        raise Exception(f"Erro Groq: {res.text}")
+
+def call_openrouter_free(prompt, api_key, model="meta-llama/llama-3.3-70b-instruct:free"):
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}]
+    }
+    res = requests.post(url, json=payload, headers=headers)
+    if res.status_code == 200:
+        return res.json()['choices'][0]['message']['content']
+    else:
+        raise Exception(f"Erro OpenRouter: {res.text}")
+
+# Interface Principal
+st.title("⚡ Multi-Engine IA: Invenções & Engenharia Online")
+st.caption("Rode modelos Open Source e proprietários diretamente na nuvem (sem necessidade de GPU local)")
+
+tabs = st.tabs(["🧪 Gerador Multiagente", "💬 Teste de Provedores de IA"])
+
+with tabs[0]:
+    st.subheader("Agentes Autônomos de Invenção")
+    
+    col_prov, col_area = st.columns(2)
+    with col_prov:
+        provedor = st.selectbox(
+            "Selecione o Provedor Cloud dos Agentes:",
+            ["Google Gemini (Recomendado)", "Groq (Llama 3.3 70B)", "OpenRouter Free"]
         )
-    with col2:
+    with col_area:
         area_projeto = st.selectbox(
             "Área do Projeto:",
-            ["Engenharia Química / Cosméticos", "Engenharia Mecânica / Robótica", 
-             "Aeroespacial / Drones", "Eletrônica / IoT", "Biotecnologia & Materiais"]
+            ["Engenharia Química / Cosméticos", "Engenharia Mecânica", "Eletrônica / IoT", "Biotecnologia"]
         )
-
-    if st.button("🚀 Iniciar Colaboração Autônoma dos Agentes", type="primary"):
-        if not gemini_key:
-            st.error("Por favor, insira sua Chave de API do Gemini na barra lateral.")
-        elif not ideia_usuario.strip():
-            st.warning("Por favor, descreva a ideia antes de prosseguir.")
-        else:
-            client = genai.Client(api_key=gemini_key)
-            
-            # --- AGENTE 1: Pesquisador Científico ---
-            with st.status("🕵️ Agente 1 (Pesquisador): Validando viabilidade teórica e física...", expanded=True) as status1:
-                prompt_a1 = f"""
-                Atue como Pesquisador Científico Sênior.
-                Área: {area_projeto}.
-                Ideia do Usuário: "{ideia_usuario}".
-                
-                Sua tarefa:
-                1. Analise a viabilidade científica, física e química desta ideia.
-                2. Liste os princípios teóricos que fundamentam a ideia.
-                3. Identifique potenciais gargalos ou riscos técnicos.
-                """
-                res_agente1 = client.models.generate_content(
-                    model="gemini-3.6-flash", contents=prompt_a1
-                ).text
-                status1.update(label="✅ Agente 1: Análise de viabilidade concluída!", state="complete")
-
-            # --- AGENTE 2: Engenheiro de Projetos ---
-            with st.status("⚙️ Agente 2 (Engenheiro): Projetando arquitetura/formulação...", expanded=True) as status2:
-                prompt_a2 = f"""
-                Atue como Engenheiro de Projetos e Arquitetura Sênior.
-                Com base no parecer científico do Pesquisador:
-                {res_agente1}
-
-                Sua tarefa:
-                1. Elabore a especificação técnica detalhada do invento.
-                2. Se for químico/perfumaria/cosmético: Dê a dosagem/fórmula completa em porcentagens (%), reagentes e fixadores.
-                3. Se for mecânico/eletrônico: Dê o diagrama de blocos, componentes e esquemático de ligação.
-                """
-                res_agente2 = client.models.generate_content(
-                    model="gemini-3.6-flash", contents=prompt_a2
-                ).text
-                status2.update(label="✅ Agente 2: Especificação técnica gerada!", state="complete")
-
-            # --- AGENTE 3: Especialista em Prototipagem ---
-            with st.status("🛠️ Agente 3 (Mestre Maker): Criando BOM e Guia de Montagem...", expanded=True) as status3:
-                prompt_a3 = f"""
-                Atue como Mestre em Prototipagem Rápida e Maker.
-                Com base no projeto técnico do Engenheiro:
-                {res_agente2}
-
-                Sua tarefa:
-                1. Crie a Lista de Materiais (BOM) completa com especificações e sugestão de fornecedores/fontes.
-                2. Liste as ferramentas necessárias para a montagem ou síntese.
-                3. Forneça o Guia Passo a Passo para construir e testar o primeiro protótipo funcional.
-                """
-                res_agente3 = client.models.generate_content(
-                    model="gemini-3.6-flash", contents=prompt_a3
-                ).text
-                status3.update(label="✅ Agente 3: Guia de prototipagem e materiais finalizado!", state="complete")
-
-            # Apresentação Final do Dossiê
-            st.divider()
-            st.subheader("📜 Dossiê Técnico Final da Invenção")
-            
-            with st.expander("🔬 Análise de Viabilidade (Pesquisador Científico)", expanded=False):
-                st.markdown(res_agente1)
-                
-            with st.expander("⚙️ Arquitetura Técnica / Formulação (Engenheiro de Projetos)", expanded=False):
-                st.markdown(res_agente2)
-
-            st.markdown("### 🛠️ Lista de Materiais e Guia do Protótipo")
-            st.markdown(res_agente3)
-
-            dossie = f"# DOSSIÊ DE INVENÇÃO\n\n## 1. Viabilidade\n{res_agente1}\n\n## 2. Projeto Técnico\n{res_agente2}\n\n## 3. Guia do Protótipo & Materiais\n{res_agente3}"
-            
-            st.download_button(
-                label="📄 Baixar Dossiê Completo (.md)",
-                data=dossie,
-                file_name="Dossie_Invention.md",
-                mime="text/markdown"
-            )
-
-# ==============================================================================
-# ABA 2: GERADOR DE ORÇAMENTOS TÉCNICOS
-# ==============================================================================
-with tab_orcamento:
-    st.title("📋 Gerador de Orçamentos Técnicos & Análise de Projetos")
-    st.markdown("Análise de **PDFs, planilhas e imagens 3D** com cálculo de corte e proporção de pixels.")
-
-    scale_info = st.text_area(
-        "Referência de medida para imagem/desenho (Ex: A porta tem 2.10m):",
-        placeholder="Informe uma escala de referência..."
-    )
-
-    uploaded_files = st.file_uploader(
-        "Carregue os arquivos do projeto:",
-        type=["pdf", "xlsx", "xls", "csv", "png", "jpg", "jpeg"],
-        accept_multiple_files=True
-    )
-
-    if uploaded_files:
-        st.subheader("📎 Arquivos Carregados")
-        cols = st.columns(min(len(uploaded_files), 4))
-        contents_payload = []
         
-        for idx, file in enumerate(uploaded_files):
-            with cols[idx % 4]:
-                st.caption(f"**{file.name}**")
-                if file.type.startswith("image"):
-                    img = Image.open(file)
-                    st.image(img, use_container_width=True)
-                    contents_payload.append(img)
-                elif file.type == "application/pdf":
-                    pdf_text = read_pdf(file)
-                    contents_payload.append(f"--- PDF '{file.name}' ---\n{pdf_text}")
-                elif file.type in ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel", "text/csv"]:
-                    sheet_text = read_excel_or_csv(file)
-                    contents_payload.append(f"--- PLANILHA '{file.name}' ---\n{sheet_text}")
+    ideia = st.text_area("Descreva a ideia da invenção:", height=120)
 
-        prompt_orcamento = f"""
-        Você é um Engenheiro Orçamentista e Especialista em Análise Dimensional.
-        Análise todos os arquivos anexados.
-        {f"ESCALA: {scale_info}" if scale_info else "Faça estimativas baseadas em proporção visual."}
+    if st.button("🚀 Processar com Agentes Cloud", type="primary"):
+        if not ideia.strip():
+            st.warning("Por favor, digite a ideia.")
+        else:
+            try:
+                # Função de roteamento para a API escolhida
+                def executar_agente(prompt):
+                    if "Gemini" in provedor:
+                        if not gemini_key: raise Exception("Insira a chave do Gemini na sidebar.")
+                        return call_gemini(prompt, gemini_key)
+                    elif "Groq" in provedor:
+                        if not groq_key: raise Exception("Insira a chave do Groq na sidebar.")
+                        return call_groq(prompt, groq_key)
+                    elif "OpenRouter" in provedor:
+                        if not openrouter_key: raise Exception("Insira a chave do OpenRouter na sidebar.")
+                        return call_openrouter_free(prompt, openrouter_key)
 
-        Gere um ORÇAMENTO TÉCNICO COMPLETO em Markdown com:
-        1. Resumo Executivo
-        2. Análise Dimensional Visual (Pixel Scaling)
-        3. Tabela de Quantitativo de Materiais
-        4. Plano de Aproveitamento e Otimização de Cortes
-        5. Resumo Financeiro Final
-        """
+                with st.status("🕵️ Agente 1 (Pesquisador): Verificando viabilidade...", expanded=True):
+                    p1 = f"Atue como Pesquisador Sênior na área {area_projeto}. Analise a viabilidade técnica de: {ideia}"
+                    r1 = executar_agente(p1)
+                
+                with st.status("⚙️ Agente 2 (Engenheiro): Criando especificação técnica...", expanded=True):
+                    p2 = f"Atue como Engenheiro de Projetos. Com base na análise: {r1}. Elabore a especificação/formulação detalhada."
+                    r2 = executar_agente(p2)
 
-        if st.button("🚀 Gerar Orçamento Técnico", type="primary"):
-            if not gemini_key:
-                st.error("Por favor, insira a Chave de API do Gemini na barra lateral.")
-            else:
-                client = genai.Client(api_key=gemini_key)
-                with st.spinner("Analisando documentos e gerando orçamento..."):
-                    try:
-                        res = client.models.generate_content(
-                            model="gemini-3.6-flash",
-                            contents=[prompt_orcamento] + contents_payload
-                        )
-                        st.success("Orçamento Gerado!")
-                        st.markdown(res.text)
-                    except Exception as e:
-                        st.error(f"Erro ao processar: {str(e)}")
+                with st.status("🛠️ Agente 3 (Maker): Gerando BOM e protótipo...", expanded=True):
+                    p3 = f"Atue como Especialista em Prototipagem. Com base em: {r2}. Liste materiais (BOM) e passos para montar o protótipo."
+                    r3 = executar_agente(p3)
+
+                st.success("Dossiê gerado com sucesso na nuvem!")
+                st.markdown("### 🔬 Parecer de Viabilidade")
+                st.write(r1)
+                st.markdown("### ⚙️ Projeto Técnico")
+                st.write(r2)
+                st.markdown("### 🛠️ Materiais e Protótipo")
+                st.write(r3)
+
+            except Exception as e:
+                st.error(f"Erro na execução: {str(e)}")
+
+with tabs[1]:
+    st.subheader("Testar Modelo Específico no Browser")
+    prompt_teste = st.text_input("Pergunta para o modelo:")
+    modelo_sel = st.selectbox("Escolha o modelo:", [
+        "Gemini 2.5 Flash (Google)",
+        "Llama 3.3 70B (Groq)",
+        "DeepSeek R1 Free (OpenRouter)",
+        "Qwen 2.5 Coder Free (OpenRouter)"
+    ])
+    
+    if st.button("Enviar Consulta"):
+        if prompt_teste:
+            try:
+                if "Gemini" in modelo_sel:
+                    res = call_gemini(prompt_teste, gemini_key)
+                elif "Groq" in modelo_sel:
+                    res = call_groq(prompt_teste, groq_key)
+                elif "DeepSeek" in modelo_sel:
+                    res = call_openrouter_free(prompt_teste, openrouter_key, "deepseek/deepseek-r1:free")
+                elif "Qwen" in modelo_sel:
+                    res = call_openrouter_free(prompt_teste, openrouter_key, "qwen/qwen-2.5-coder-32b-instruct:free")
+                
+                st.markdown("**Resposta:**")
+                st.write(res)
+            except Exception as e:
+                st.error(f"Erro: {str(e)}")
