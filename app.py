@@ -2,66 +2,24 @@ import streamlit as st
 import pandas as pd
 from PIL import Image
 import pypdf
-import os
 from google import genai
 
-# Importações do CrewAI e LangChain
-from crewai import Agent, Task, Crew, Process
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_groq import ChatGroq
-
-# Configuração da página
+# Configuração da página no Streamlit
 st.set_page_config(
     page_title="Plataforma de Engenharia, Invenções & Orçamentos",
     page_icon="⚡",
     layout="wide"
 )
 
-# Sidebar com Provedores e Chaves
+# Barra lateral para configuração da chave API e Parâmetros
 with st.sidebar:
-    st.header("🔑 Configurações de LLMs / APIs")
-    
-    provedor_ia = st.selectbox(
-        "Selecione o Provedor Principal para os Agentes:",
-        ["Google Gemini (Gratuito)", "Groq - Llama 3.3 (Gratuito/OpenSource)", "Ollama (Local/Sem Chave)"]
-    )
-    
-    gemini_key = st.text_input("Chave Gemini API:", type="password")
-    groq_key = st.text_input("Chave Groq API:", type="password")
+    st.header("🔑 Configurações")
+    gemini_key = st.text_input("Chave de API do Google Gemini:", type="password")
     
     st.divider()
-    st.info("""
-    **Onde obter chaves gratuitas:**
-    - Gemini: https://aistudio.google.com/
-    - Groq: https://console.groq.com/
-    """)
+    st.info("Obtenha sua chave de API gratuitamente em: https://aistudio.google.com/")
 
-# Função para inicializar o Modelo de Linguagem (LLM) escolhido
-def get_llm(provedor, key_gemini, key_groq):
-    if provedor == "Google Gemini (Gratuito)":
-        if not key_gemini:
-            st.error("Por favor, informe a Chave da API do Gemini.")
-            return None
-        return ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash",
-            google_api_key=key_gemini,
-            temperature=0.7
-        )
-    elif provedor == "Groq - Llama 3.3 (Gratuito/OpenSource)":
-        if not key_groq:
-            st.error("Por favor, informe a Chave da API da Groq.")
-            return None
-        return ChatGroq(
-            temperature=0.7,
-            groq_api_key=key_groq,
-            model_name="llama-3.3-70b-versatile"
-        )
-    elif provedor == "Ollama (Local/Sem Chave)":
-        # Conecta ao servidor local do Ollama
-        from langchain_community.llms import Ollama
-        return Ollama(model="llama3")
-
-# Funções auxiliares de leitura
+# Funções auxiliares para leitura de arquivos
 def read_pdf(file):
     reader = pypdf.PdfReader(file)
     text = ""
@@ -79,18 +37,18 @@ def read_excel_or_csv(file):
 
 # NAVEGAÇÃO POR ABAS
 tab_inventor, tab_orcamento = st.tabs([
-    "🤖 Agentes Autônomos (CrewAI)", 
+    "🤖 Agentes Autônomos de Invenção", 
     "📋 Gerador de Orçamentos Técnicos"
 ])
 
 # ==============================================================================
-# ABA 1: CREWAI AGENTES AUTÔNOMOS
+# ABA 1: AGENTES AUTÔNOMOS PARA INVENÇÃO (NATIVO GEMINI)
 # ==============================================================================
 with tab_inventor:
-    st.title("🧪 Laboratório Multiagente de Invenções (CrewAI)")
+    st.title("🧪 Laboratório Multiagente de Invenções & Prototipagem")
     st.markdown("""
-    Nesta aba, **3 Agentes Autônomos especializados** trabalham em equipe. 
-    Eles analisam, criticam e refinam a ideia uns dos outros em tempo real até gerar o protótipo ideal.
+    Nesta seção, uma equipe de **3 Agentes Especialistas de IA** atuam em sequência autônoma para transformar
+    qualquer ideia em um **dossiê técnico completo**, incluindo fórmula/esquemático e guia de prototipagem.
     """)
 
     col1, col2 = st.columns([2, 1])
@@ -98,88 +56,95 @@ with tab_inventor:
         ideia_usuario = st.text_area(
             "Descreva a sua ideia de invenção:",
             height=150,
-            placeholder="Exemplo: Um perfume biomimético com feromônios sintéticos e óleos essenciais com fixação prolongada por microcápsulas..."
+            placeholder="Ex: Um perfume biomimético com fixação estendida por microcápsulas de alginato..."
         )
     with col2:
         area_projeto = st.selectbox(
             "Área do Projeto:",
             ["Engenharia Química / Cosméticos", "Engenharia Mecânica / Robótica", 
-             "Aeroespacial / Drones", "Eletrônica / IoT", "Biotecnologia"]
+             "Aeroespacial / Drones", "Eletrônica / IoT", "Biotecnologia & Materiais"]
         )
 
     if st.button("🚀 Iniciar Colaboração Autônoma dos Agentes", type="primary"):
-        llm_selecionado = get_llm(provedor_ia, gemini_key, groq_key)
-        
-        if llm_selecionado and ideia_usuario.strip():
-            with st.spinner("Agentes reunidos! Iniciando o fluxo autônomo de trabalho..."):
-                try:
-                    # 1. Definição dos Agentes Autônomos
-                    pesquisador = Agent(
-                        role="Pesquisador Científico Sênior",
-                        goal=f"Analisar a viabilidade física, química e teórica da ideia: '{ideia_usuario}' na área de {area_projeto}.",
-                        backstory="Você é um cientista renomado com doutorado em física e química aplicada. Seu papel é validar leis científicas e identificar conceitos fundamentais.",
-                        verbose=True,
-                        llm=llm_selecionado
-                    )
+        if not gemini_key:
+            st.error("Por favor, insira sua Chave de API do Gemini na barra lateral.")
+        elif not ideia_usuario.strip():
+            st.warning("Por favor, descreva a ideia antes de prosseguir.")
+        else:
+            client = genai.Client(api_key=gemini_key)
+            
+            # --- AGENTE 1: Pesquisador Científico ---
+            with st.status("🕵️ Agente 1 (Pesquisador): Validando viabilidade teórica e física...", expanded=True) as status1:
+                prompt_a1 = f"""
+                Atue como Pesquisador Científico Sênior.
+                Área: {area_projeto}.
+                Ideia do Usuário: "{ideia_usuario}".
+                
+                Sua tarefa:
+                1. Analise a viabilidade científica, física e química desta ideia.
+                2. Liste os princípios teóricos que fundamentam a ideia.
+                3. Identifique potenciais gargalos ou riscos técnicos.
+                """
+                res_agente1 = client.models.generate_content(
+                    model="gemini-3.6-flash", contents=prompt_a1
+                ).text
+                status1.update(label="✅ Agente 1: Análise de viabilidade concluída!", state="complete")
 
-                    engenheiro = Agent(
-                        role="Engenheiro de Projetos e Arquitetura",
-                        goal="Desenvolver a estrutura técnica detalhada, esquemáticos e formulação com base nas descobertas do Pesquisador.",
-                        backstory="Você é um engenheiro sênior focado em transformar teorias científicas em projetos reais. Você cria fórmulas químicas exatas ou desenhos estruturais.",
-                        verbose=True,
-                        llm=llm_selecionado
-                    )
+            # --- AGENTE 2: Engenheiro de Projetos ---
+            with st.status("⚙️ Agente 2 (Engenheiro): Projetando arquitetura/formulação...", expanded=True) as status2:
+                prompt_a2 = f"""
+                Atue como Engenheiro de Projetos e Arquitetura Sênior.
+                Com base no parecer científico do Pesquisador:
+                {res_agente1}
 
-                    prototipador = Agent(
-                        role="Mestre Maker e Especialista em Prototipagem",
-                        goal="Criar a lista completa de materiais (BOM) e o guia passo a passo para construir o primeiro protótipo funcional.",
-                        backstory="Você é um especialista em laboratórios de prototipagem rápida e fabricação digital. Você sabe exatamente como comprar materiais baratos e montar o protótipo.",
-                        verbose=True,
-                        llm=llm_selecionado
-                    )
+                Sua tarefa:
+                1. Elabore a especificação técnica detalhada do invento.
+                2. Se for químico/perfumaria/cosmético: Dê a dosagem/fórmula completa em porcentagens (%), reagentes e fixadores.
+                3. Se for mecânico/eletrônico: Dê o diagrama de blocos, componentes e esquemático de ligação.
+                """
+                res_agente2 = client.models.generate_content(
+                    model="gemini-3.6-flash", contents=prompt_a2
+                ).text
+                status2.update(label="✅ Agente 2: Especificação técnica gerada!", state="complete")
 
-                    # 2. Definição das Tarefas Encadeadas
-                    t1 = Task(
-                        description=f"Analise a viabilidade teórica de: {ideia_usuario}. Liste os princípios fundamentais e possíveis gargalos técnicos.",
-                        expected_output="Relatório de viabilidade teórica e científica.",
-                        agent=pesquisador
-                    )
+            # --- AGENTE 3: Especialista em Prototipagem ---
+            with st.status("🛠️ Agente 3 (Mestre Maker): Criando BOM e Guia de Montagem...", expanded=True) as status3:
+                prompt_a3 = f"""
+                Atue como Mestre em Prototipagem Rápida e Maker.
+                Com base no projeto técnico do Engenheiro:
+                {res_agente2}
 
-                    t2 = Task(
-                        description="Com base na análise teórica, crie a especificação técnica detalhada, incluindo dosagens/formulações em % ou arquitetura mecânica/eletrônica.",
-                        expected_output="Especificação técnica e arquitetura de projeto detalhada.",
-                        agent=engenheiro
-                    )
+                Sua tarefa:
+                1. Crie a Lista de Materiais (BOM) completa com especificações e sugestão de fornecedores/fontes.
+                2. Liste as ferramentas necessárias para a montagem ou síntese.
+                3. Forneça o Guia Passo a Passo para construir e testar o primeiro protótipo funcional.
+                """
+                res_agente3 = client.models.generate_content(
+                    model="gemini-3.6-flash", contents=prompt_a3
+                ).text
+                status3.update(label="✅ Agente 3: Guia de prototipagem e materiais finalizado!", state="complete")
 
-                    t3 = Task(
-                        description="Com base no projeto técnico, elabore a Lista de Materiais (BOM) com especificações e o Manual Passo a Passo de montagem/síntese do protótipo.",
-                        expected_output="Lista de materiais e guia prático de montagem em Markdown.",
-                        agent=prototipador
-                    )
+            # Apresentação Final do Dossiê
+            st.divider()
+            st.subheader("📜 Dossiê Técnico Final da Invenção")
+            
+            with st.expander("🔬 Análise de Viabilidade (Pesquisador Científico)", expanded=False):
+                st.markdown(res_agente1)
+                
+            with st.expander("⚙️ Arquitetura Técnica / Formulação (Engenheiro de Projetos)", expanded=False):
+                st.markdown(res_agente2)
 
-                    # 3. Criação do Crew (Equipe) e Execução
-                    equipe = Crew(
-                        agents=[pesquisador, engenheiro, prototipador],
-                        tasks=[t1, t2, t3],
-                        process=Process.sequential,
-                        verbose=True
-                    )
+            st.markdown("### 🛠️ Lista de Materiais e Guia do Protótipo")
+            st.markdown(res_agente3)
 
-                    resultado = equipe.kickoff()
-
-                    st.success("✅ Processo Autônomo Concluído com Sucesso!")
-                    st.markdown("### 📜 Dossiê Final da Invenção")
-                    st.markdown(resultado.raw)
-
-                    st.download_button(
-                        label="📄 Baixar Dossiê Autônomo (.md)",
-                        data=resultado.raw,
-                        file_name="Dossie_CrewAI_Invecao.md",
-                        mime="text/markdown"
-                    )
-
-                except Exception as e:
-                    st.error(f"Erro durante a execução do CrewAI: {str(e)}")
+            dossie = f"# DOSSIÊ DE INVENÇÃO\n\n## 1. Viabilidade\n{res_agente1}\n\n## 2. Projeto Técnico\n{res_agente2}\n\n## 3. Guia do Protótipo & Materiais\n{res_agente3}"
+            
+            st.download_button(
+                label="📄 Baixar Dossiê Completo (.md)",
+                data=dossie,
+                file_name="Dossie_Invention.md",
+                mime="text/markdown"
+            )
 
 # ==============================================================================
 # ABA 2: GERADOR DE ORÇAMENTOS TÉCNICOS
@@ -239,7 +204,7 @@ with tab_orcamento:
                 with st.spinner("Analisando documentos e gerando orçamento..."):
                     try:
                         res = client.models.generate_content(
-                            model="gemini-1.5-flash",
+                            model="gemini-3.6-flash",
                             contents=[prompt_orcamento] + contents_payload
                         )
                         st.success("Orçamento Gerado!")

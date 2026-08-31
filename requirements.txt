@@ -1,7 +1,5 @@
 streamlit
-crewai
-langchain-google-genai
-langchain-groq
+google-genai
 pandas
 openpyxl
 pypdf
