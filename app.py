@@ -116,7 +116,7 @@ with st.sidebar:
         st.info("Nenhum projeto salvo na sessão.")
 
 # ==============================================================================
-# FUNÇÕES DE CHAMADA ÀS APIS (COM SUPORTE A IMAGENS NO GEMINI)
+# FUNÇÕES DE CHAMADA ÀS APIS
 # ==============================================================================
 def call_gemini(contents_payload, api_key, model="gemini-3.6-flash"):
     client = genai.Client(api_key=api_key)
@@ -238,4 +238,157 @@ with tabs[1]:
                 """
                 try:
                     codigo_bruto = call_gemini(prompt_draw, gemini_key)
-                    codigo_python = codigo_bruto.replace("```python", "").replace("
+                    codigo_python = (
+                        codigo_bruto.replace("```python", "")
+                                    .replace("```", "")
+                                    .strip()
+                    )
+                    
+                    plt.close('all')
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    exec_globals = {"plt": plt, "fig": fig, "ax": ax, "patches": patches}
+                    exec(codigo_python, exec_globals)
+                    
+                    st.pyplot(plt.gcf(), use_container_width=True)
+                    plt.close('all')
+                    st.success("Desenho Técnico Gerado com Sucesso!")
+                except Exception as e:
+                    plt.close('all')
+                    st.error(f"Erro ao desenhar: {str(e)}")
+
+# ------------------------------------------------------------------------------
+# ABA 3: ORÇAMENTOS TÉCNICOS & EXTRAÇÃO ESTRUTURADA (IMAGENS E PDFS)
+# ------------------------------------------------------------------------------
+with tabs[2]:
+    st.subheader("📋 Leitor de Projetos, Imagens e Extração de Planilhas")
+    st.markdown("Faça upload de **Imagens (Plantas)**, **PDFs técnicos** ou **Planilhas** para converter em Lista de Materiais e Desenhos de Peças.")
+    
+    scale_info = st.text_input("Referência de escala (Opcional):", placeholder="Ex: O vão principal tem 3.50m...")
+    uploaded_files = st.file_uploader("Upload de Arquivos:", type=["pdf", "xlsx", "csv", "png", "jpg", "jpeg"], accept_multiple_files=True)
+
+    if uploaded_files:
+        if st.button("🚀 Analisar Documentos e Gerar Planilha", type="primary"):
+            if not gemini_key:
+                st.error("Insira a chave Gemini na barra lateral.")
+            else:
+                with st.spinner("Analisando imagens/textos e estruturando dados..."):
+                    try:
+                        contents_payload = []
+                        texto_extraido = ""
+                        
+                        for f in uploaded_files:
+                            if f.type.startswith("image"):
+                                img = Image.open(f)
+                                st.image(img, width=250, caption=f.name)
+                                contents_payload.append(img)
+                            elif f.type == "application/pdf":
+                                texto = read_pdf(f)
+                                texto_extraido += f"\n--- Conteúdo do PDF ({f.name}) ---\n{texto}"
+                            elif f.name.endswith((".xlsx", ".xls", ".csv")):
+                                texto = read_excel_or_csv(f)
+                                texto_extraido += f"\n--- Conteúdo da Planilha ({f.name}) ---\n{texto}"
+
+                        if texto_extraido:
+                            contents_payload.append(texto_extraido)
+
+                        prompt_orcamento = f"""
+                        Você é um Engenheiro de Processos. Analise os documentos e imagens fornecidos.
+                        {f"Escala de Referência Visual: {scale_info}" if scale_info else ""}
+                        
+                        Extraia e deduza as informações das peças e gere OBRIGATORIAMENTE APENAS UM BLOCO JSON.
+                        O JSON deve ter EXATAMENTE esta estrutura de chaves para que eu possa gerar o Excel:
+                        
+                        ```json
+                        {{
+                          "relatorio_texto": "Resumo executivo do projeto, recomendações técnicas e análise visual.",
+                          "lista_materiais": [
+                            {{"ITEM": "1", "DESCRIÇÃO": "Nome da Peça", "COMP. (mm)": "1000", "LARG. (mm)": "500", "QTD.": "2", "MATERIAL": "MDF/Metal etc."}}
+                          ],
+                          "pecas_para_desenho": [
+                            {{"nome": "Nome da Peça", "descricao": "Descrição geométrica com cotas em mm"}}
+                          ]
+                        }}
+                        ```
+                        Sem formatações externas ou introduções verbais. Apenas o código JSON puro.
+                        """
+                        
+                        contents_payload.insert(0, prompt_orcamento)
+                        res_orc = call_gemini(contents_payload, gemini_key)
+                        
+                        match = re.search(r'```(?:json)?\n?(.*?)\n?```', res_orc, re.DOTALL)
+                        json_str = match.group(1).strip() if match else res_orc.strip()
+                        dados_estruturados = json.loads(json_str)
+                        
+                        st.session_state["relatorio_texto"] = dados_estruturados.get("relatorio_texto", "Relatório Indisponível.")
+                        st.session_state["lista_materiais"] = dados_estruturados.get("lista_materiais", [])
+                        st.session_state["pecas_orcamento"] = dados_estruturados.get("pecas_para_desenho", [])
+                        
+                        st.session_state.historico_projetos.append({
+                            "titulo": f"Análise: {uploaded_files[0].name}",
+                            "tipo": "Orçamento/Extração",
+                            "resumo": st.session_state["relatorio_texto"][:150],
+                            "conteudo": st.session_state["relatorio_texto"]
+                        })
+
+                        st.success("Dados extraídos e estruturados com sucesso!")
+                    except Exception as e:
+                        st.error(f"Erro ao estruturar os dados. A IA pode não ter encontrado o formato correto. Detalhe: {str(e)}")
+
+    if "lista_materiais" in st.session_state and st.session_state["lista_materiais"]:
+        st.markdown("---")
+        st.markdown("### 📊 Relatório Técnico do Projeto")
+        st.write(st.session_state["relatorio_texto"])
+        
+        st.markdown("### 📋 Tabela de Materiais Extraída")
+        df_materiais = pd.DataFrame(st.session_state["lista_materiais"])
+        st.dataframe(df_materiais, use_container_width=True)
+        
+        buffer_excel = io.BytesIO()
+        with pd.ExcelWriter(buffer_excel, engine='xlsxwriter') as writer:
+            df_materiais.to_excel(writer, index=False, sheet_name='Lista_Materiais')
+        buffer_excel.seek(0)
+        
+        col_excel, col_pdf = st.columns(2)
+        with col_excel:
+            st.download_button(
+                label="📥 Baixar Planilha (.xlsx)",
+                data=buffer_excel,
+                file_name="Lista_Materiais.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary"
+            )
+        with col_pdf:
+            pdf_bytes = criar_pdf("RELATÓRIO TÉCNICO", st.session_state["relatorio_texto"])
+            st.download_button(
+                label="📄 Baixar Resumo em PDF", 
+                data=pdf_bytes, 
+                file_name="Resumo_Projeto.pdf", 
+                mime="application/pdf"
+            )
+
+        if st.session_state.get("pecas_orcamento"):
+            st.divider()
+            st.subheader("📐 Modelagem 2D Automática das Peças da Tabela")
+            st.markdown("Gere um *Blueprint* para os componentes encontrados na análise acima:")
+            
+            opcoes_desenho = [f"{p.get('nome', '')} - {p.get('descricao', '')}" for p in st.session_state["pecas_orcamento"]]
+            peca_selecionada = st.selectbox("Escolha o componente extraído:", opcoes_desenho)
+            
+            if st.button("🎨 Desenhar Componente Selecionado"):
+                with st.spinner(f"Gerando esquemático para: {peca_selecionada}..."):
+                    prompt_draw = f"""
+                    Atue APENAS como um gerador de código Python (Matplotlib).
+                    Crie o código para desenhar um esquema técnico 2D cotado da peça: '{peca_selecionada}'.
+                    
+                    REGRAS OBRIGATÓRIAS:
+                    - Defina o tamanho da figura como: fig, ax = plt.subplots(figsize=(10, 6))
+                    - Use fundo escuro estilo blueprint (facecolor='#0a192f') no fig e ax.
+                    - Use linhas e textos em branco ou azul claro ('#00d2ff').
+                    - NUNCA use plt.tight_layout().
+                    - Responda APENAS com o código puro. Nenhuma palavra a mais.
+                    """
+                    try:
+                        codigo_bruto = call_gemini(prompt_draw, gemini_key)
+                        codigo_python = (
+                            codigo_bruto.replace("```python", "")
+                                        .replace("
