@@ -39,7 +39,7 @@ with st.sidebar:
 # ==============================================================================
 # FUNÇÕES DE CHAMADA ÀS APIS NA NUVEM
 # ==============================================================================
-def call_gemini(prompt, api_key, model="gemini-2.5-flash"):
+def call_gemini(prompt, api_key, model="gemini-3.6-flash"):
     client = genai.Client(api_key=api_key)
     response = client.models.generate_content(
         model=model,
