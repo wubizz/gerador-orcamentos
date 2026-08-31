@@ -1,12 +1,3 @@
-O erro **`FPDFException: Not enough horizontal space to render a single character`** ocorre na biblioteca `fpdf2` quando `pdf.multi_cell(0, ...)` tenta calcular a largura automática com o cursor posicionado próximo à margem direita ou ao processar linhas longas sem espaço. Além disso, a sintaxe legada `pdf.output(dest='S')` foi substituída pelo método nativo `bytes(pdf.output())`.
-
-Abaixo está o código integral do arquivo `app.py` com a função `criar_pdf` corrigida (utilizando `pdf.epw` - *Effective Page Width*), tratamento seguro de quebras de texto e todas as 5 abas operacionais.
-
----
-
-### Código Completo e Corrigido (`app.py`)
-
-```python
 import streamlit as st
 import pandas as pd
 import requests
@@ -49,7 +40,7 @@ def criar_pdf(titulo, conteudo_texto):
     
     # Conteúdo do relatório
     pdf.set_font("Helvetica", size=10)
-    largura_util = pdf.epw  # Largura efetiva da página evitando estouro de margem
+    largura_util = pdf.epw
     
     for linha in conteudo_texto.split("\n"):
         texto_limpo = linha.encode("latin-1", "replace").decode("latin-1")
@@ -469,5 +460,3 @@ with tabs[4]:
                     st.download_button("🎵 Baixar Áudio MP3", data=fp, file_name="locucao.mp3", mime="audio/mp3")
                 except Exception as e:
                     st.error(f"Erro ao gerar multimídia: {str(e)}")
-
-```
