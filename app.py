@@ -27,8 +27,13 @@ if "historico_projetos" not in st.session_state:
     st.session_state.historico_projetos = []
 
 # ==============================================================================
-# FUNÇÕES DE LEITURA DE ARQUIVOS
+# FUNÇÕES UTILITÁRIAS
 # ==============================================================================
+def limpar_codigo_python(texto_bruto):
+    """Remove blocos de markdown e limpa espaços extras de códigos gerados por IA."""
+    texto = texto_bruto.replace("```python", "").replace("```", "")
+    return texto.strip()
+
 def read_pdf(file):
     try:
         reader = pypdf.PdfReader(file)
@@ -238,11 +243,7 @@ with tabs[1]:
                 """
                 try:
                     codigo_bruto = call_gemini(prompt_draw, gemini_key)
-                    codigo_python = (
-                        codigo_bruto.replace("```python", "")
-                                    .replace("```", "")
-                                    .strip()
-                    )
+                    codigo_python = limpar_codigo_python(codigo_bruto)
                     
                     plt.close('all')
                     fig, ax = plt.subplots(figsize=(10, 6))
@@ -315,80 +316,4 @@ with tabs[2]:
                         contents_payload.insert(0, prompt_orcamento)
                         res_orc = call_gemini(contents_payload, gemini_key)
                         
-                        match = re.search(r'```(?:json)?\n?(.*?)\n?```', res_orc, re.DOTALL)
-                        json_str = match.group(1).strip() if match else res_orc.strip()
-                        dados_estruturados = json.loads(json_str)
-                        
-                        st.session_state["relatorio_texto"] = dados_estruturados.get("relatorio_texto", "Relatório Indisponível.")
-                        st.session_state["lista_materiais"] = dados_estruturados.get("lista_materiais", [])
-                        st.session_state["pecas_orcamento"] = dados_estruturados.get("pecas_para_desenho", [])
-                        
-                        st.session_state.historico_projetos.append({
-                            "titulo": f"Análise: {uploaded_files[0].name}",
-                            "tipo": "Orçamento/Extração",
-                            "resumo": st.session_state["relatorio_texto"][:150],
-                            "conteudo": st.session_state["relatorio_texto"]
-                        })
-
-                        st.success("Dados extraídos e estruturados com sucesso!")
-                    except Exception as e:
-                        st.error(f"Erro ao estruturar os dados. A IA pode não ter encontrado o formato correto. Detalhe: {str(e)}")
-
-    if "lista_materiais" in st.session_state and st.session_state["lista_materiais"]:
-        st.markdown("---")
-        st.markdown("### 📊 Relatório Técnico do Projeto")
-        st.write(st.session_state["relatorio_texto"])
-        
-        st.markdown("### 📋 Tabela de Materiais Extraída")
-        df_materiais = pd.DataFrame(st.session_state["lista_materiais"])
-        st.dataframe(df_materiais, use_container_width=True)
-        
-        buffer_excel = io.BytesIO()
-        with pd.ExcelWriter(buffer_excel, engine='xlsxwriter') as writer:
-            df_materiais.to_excel(writer, index=False, sheet_name='Lista_Materiais')
-        buffer_excel.seek(0)
-        
-        col_excel, col_pdf = st.columns(2)
-        with col_excel:
-            st.download_button(
-                label="📥 Baixar Planilha (.xlsx)",
-                data=buffer_excel,
-                file_name="Lista_Materiais.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
-            )
-        with col_pdf:
-            pdf_bytes = criar_pdf("RELATÓRIO TÉCNICO", st.session_state["relatorio_texto"])
-            st.download_button(
-                label="📄 Baixar Resumo em PDF", 
-                data=pdf_bytes, 
-                file_name="Resumo_Projeto.pdf", 
-                mime="application/pdf"
-            )
-
-        if st.session_state.get("pecas_orcamento"):
-            st.divider()
-            st.subheader("📐 Modelagem 2D Automática das Peças da Tabela")
-            st.markdown("Gere um *Blueprint* para os componentes encontrados na análise acima:")
-            
-            opcoes_desenho = [f"{p.get('nome', '')} - {p.get('descricao', '')}" for p in st.session_state["pecas_orcamento"]]
-            peca_selecionada = st.selectbox("Escolha o componente extraído:", opcoes_desenho)
-            
-            if st.button("🎨 Desenhar Componente Selecionado"):
-                with st.spinner(f"Gerando esquemático para: {peca_selecionada}..."):
-                    prompt_draw = f"""
-                    Atue APENAS como um gerador de código Python (Matplotlib).
-                    Crie o código para desenhar um esquema técnico 2D cotado da peça: '{peca_selecionada}'.
-                    
-                    REGRAS OBRIGATÓRIAS:
-                    - Defina o tamanho da figura como: fig, ax = plt.subplots(figsize=(10, 6))
-                    - Use fundo escuro estilo blueprint (facecolor='#0a192f') no fig e ax.
-                    - Use linhas e textos em branco ou azul claro ('#00d2ff').
-                    - NUNCA use plt.tight_layout().
-                    - Responda APENAS com o código puro. Nenhuma palavra a mais.
-                    """
-                    try:
-                        codigo_bruto = call_gemini(prompt_draw, gemini_key)
-                        codigo_python = (
-                            codigo_bruto.replace("```python", "")
-                                        .replace("
+                        match = re.search(r'```(?:json)?\n?(.*?)\n?
