@@ -7,12 +7,13 @@ from google import genai
 from fpdf import FPDF
 from gtts import gTTS
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import io
 import json
 
 # Configuração da página
 st.set_page_config(
-    page_title="Multi-Engine IA: Invenções & Engenharia Pro",
+    page_title="Multi-Engine IA: Invenções, Engenharia & Plano de Corte",
     page_icon="⚡",
     layout="wide"
 )
@@ -34,7 +35,6 @@ def criar_pdf(titulo, conteudo_texto):
     pdf.ln(10)
     pdf.set_font("Arial", size=10)
     
-    # Trata quebras de linha e codificação de caracteres do Português
     linhas = conteudo_texto.split('\n')
     for linha in linhas:
         texto_limpo = linha.encode('latin-1', 'replace').decode('latin-1')
@@ -43,7 +43,7 @@ def criar_pdf(titulo, conteudo_texto):
     return pdf.output(dest='S').encode('latin-1', errors='replace')
 
 # ==============================================================================
-# SIDEBAR: CHAVES DE API E HISTÓRICO DE PROJETOS
+# SIDEBAR: CONFIGURAÇÕES E HISTÓRICO DE PROJETOS
 # ==============================================================================
 with st.sidebar:
     st.header("🔑 Configurações de APIs")
@@ -57,7 +57,6 @@ with st.sidebar:
     
     st.divider()
     
-    # --- ABA DE HISTÓRICO NO SIDEBAR ---
     st.header("📁 Pastas de Projetos")
     if st.session_state.historico_projetos:
         for idx, item in enumerate(st.session_state.historico_projetos):
@@ -76,12 +75,25 @@ with st.sidebar:
         st.info("Nenhum projeto salvo na sessão.")
 
 # ==============================================================================
-# FUNÇÕES DE API DAS IAs
+# FUNÇÕES DE API COM TRATAMENTO DE ERRO 503 (FALLBACK AUTOMÁTICO)
 # ==============================================================================
 def call_gemini(prompt, api_key, model="gemini-3.6-flash"):
     client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(model=model, contents=prompt)
-    return response.text
+    try:
+        response = client.models.generate_content(model=model, contents=prompt)
+        return response.text
+    except Exception as e:
+        error_msg = str(e)
+        if "503" in error_msg or "high demand" in error_msg.lower():
+            fallback_model = "gemini-1.5-flash"
+            st.warning(f"⚠️ O modelo principal ({model}) está com alta demanda. Utilizando o modelo de reserva ({fallback_model})...")
+            try:
+                response_fallback = client.models.generate_content(model=fallback_model, contents=prompt)
+                return response_fallback.text
+            except Exception as e2:
+                raise Exception(f"Erro no modelo de reserva: {str(e2)}")
+        else:
+            raise e
 
 def call_groq(prompt, api_key, model="llama-3.3-70b-versatile"):
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -102,19 +114,20 @@ def call_openrouter_free(prompt, api_key, model="meta-llama/llama-3.3-70b-instru
     raise Exception(f"Erro OpenRouter: {res.text}")
 
 # ==============================================================================
-# APICAÇÃO PRINCIPAL POR ABAS
+# NAVEGAÇÃO PRINCIPAL POR ABAS
 # ==============================================================================
 st.title("⚡ Multi-Engine IA: Invenções & Engenharia Pro")
 
 tabs = st.tabs([
     "🧪 Agentes de Invenção", 
-    "📐 Blueprint & Desenho de Peças", 
+    "📐 Blueprint & Peças", 
     "📋 Orçamentos Técnicos", 
-    "🎬 Gerador de Vídeos & Narração"
+    "✂️ Otimizador de Corte (Nesting)",
+    "🎬 Vídeos & Narração"
 ])
 
 # ------------------------------------------------------------------------------
-# ABA 1: AGENTES DE INVENÇÃO (COM SALVAMENTO DE HISTÓRICO E PDF)
+# ABA 1: AGENTES DE INVENÇÃO
 # ------------------------------------------------------------------------------
 with tabs[0]:
     st.subheader("Laboratório Multiagente de Prototipagem")
@@ -165,7 +178,7 @@ with tabs[0]:
                 st.error(f"Erro: {str(e)}")
 
 # ------------------------------------------------------------------------------
-# ABA 2: BLUEPRINT & DESENHO DE PEÇAS 2D/3D
+# ABA 2: BLUEPRINT & DESENHO DE PEÇAS
 # ------------------------------------------------------------------------------
 with tabs[1]:
     st.subheader("📐 Gerador de Desenhos Técnicos e Esquema de Peças")
@@ -192,86 +205,112 @@ with tabs[1]:
                 """
                 try:
                     codigo_python = call_gemini(prompt_draw, gemini_key).replace("```python", "").replace("```", "").strip()
-                    
-                    # Garante que figuras anteriores sejam limpas da memória
                     plt.close('all')
                     
-                    # Prepara o ambiente de execução seguro
                     fig, ax = plt.subplots(figsize=(10, 6))
                     exec_globals = {"plt": plt, "fig": fig, "ax": ax}
                     
                     exec(codigo_python, exec_globals)
                     
-                    # Renderiza no Streamlit expandindo na largura do container
                     st.pyplot(plt.gcf(), use_container_width=True)
                     plt.close('all')
-                    
                     st.success("Desenho Técnico Gerado com Sucesso!")
                 except Exception as e:
                     plt.close('all')
                     st.error(f"Não foi possível desenhar a peça automaticamente. Erro: {str(e)}")
 
 # ------------------------------------------------------------------------------
-# ABA 3: ORÇAMENTOS TÉCNICOS
+# ABA 3: ORÇAMENTOS TÉCNICOS (INTEGRADA COM DESENHOS DE PEÇAS)
 # ------------------------------------------------------------------------------
 with tabs[2]:
-    st.subheader("📋 Gerador de Orçamentos Técnicos")
-    uploaded_files = st.file_uploader("Upload de PDFs/Planilhas/Imagens:", type=["pdf", "xlsx", "csv", "png", "jpg"], accept_multiple_files=True)
-
-    if uploaded_files and st.button("🚀 Processar Orçamento"):
-        if not gemini_key:
-            st.error("Insira a chave Gemini na barra lateral.")
-        else:
-            with st.spinner("Analisando documentos..."):
-                # Código de leitura simplificado
-                txt_anexos = "\n".join([f"Arquivo: {f.name}" for f in uploaded_files])
-                prompt_orc = f"Gere um orçamento detalhado com base nesses arquivos:\n{txt_anexos}"
-                res_orc = call_gemini(prompt_orc, gemini_key)
-                
-                st.markdown(res_orc)
-                
-                # Salva no Histórico
-                st.session_state.historico_projetos.append({
-                    "titulo": f"Orçamento {uploaded_files[0].name}",
-                    "tipo": "Orçamento",
-                    "resumo": res_orc[:150],
-                    "conteudo": res_orc
-                })
-                
-                pdf_orc = criar_pdf("ORCAMENTO TECNICO", res_orc)
-                st.download_button("📄 Baixar Orçamento em PDF", data=pdf_orc, file_name="Orcamento.pdf", mime="application/pdf")
-
-# ------------------------------------------------------------------------------
-# ABA 4: VÍDEOS, NARRATIVAS E ÁUDIO MULTIMÍDIA
-# ------------------------------------------------------------------------------
-with tabs[3]:
-    st.subheader("🎬 Gerador de Conteúdo Multimídia (Roteiro + Narração)")
-    st.markdown("Crie um roteiro completo de apresentação para a sua invenção com locução automática em MP3.")
+    st.subheader("📋 Gerador de Orçamentos Técnicos & Análise Visual")
     
-    topico_video = st.text_input("Tema do Vídeo/Apresentação:", placeholder="Ex: Apresentação comercial do meu novo projeto de robótica")
-    idioma = st.selectbox("Idioma da Narração:", ["pt", "en", "es"])
+    scale_info = st.text_input("Referência de medida/escala (Ex: O vão principal tem 3.50m):", placeholder="Informe a referência se houver...")
+    uploaded_files = st.file_uploader("Upload de PDFs/Planilhas/Imagens:", type=["pdf", "xlsx", "csv", "png", "jpg", "jpeg"], accept_multiple_files=True, key="orc_files")
 
-    if st.button("🎬 Criar Roteiro e Gerar Narração em Áudio"):
-        if not topico_video:
-            st.warning("Digite o tema do vídeo.")
-        else:
-            with st.spinner("Escrevendo roteiro cinematográfico..."):
-                prompt_roteiro = f"Crie um roteiro de vídeo curto (1 minuto) para apresentar o projeto: '{topico_video}'. Divida em [CENA], [ROTEIRO VISUAL] e [LOCUÇÃO]."
-                roteiro = call_gemini(prompt_roteiro, gemini_key)
-                
-                st.markdown("### 📜 Roteiro Sugerido")
-                st.markdown(roteiro)
-                
-            with st.spinner("Sintetizando locução em MP3..."):
-                try:
-                    # Extrai a locução para áudio com gTTS
-                    tts = gTTS(text=roteiro, lang=idioma, slow=False)
-                    fp = io.BytesIO()
-                    tts.write_to_fp(fp)
-                    fp.seek(0)
+    if uploaded_files:
+        prompt_orcamento = f"""
+        Você é um Engenheiro Orçamentista.
+        Examine os arquivos anexados.
+        {f"ESCALA DE REFERÊNCIA: {scale_info}" if scale_info else ""}
+
+        Gere um ORÇAMENTO TÉCNICO COMPLETO contendo:
+        1. Resumo Executivo
+        2. Tabela de Quantitativo de Materiais e Peças
+        3. Resumo Financeiro Final
+        
+        IMPORTANTE: Ao final da resposta, inclua obrigatoriamente um bloco JSON estrito no seguinte formato listando as 3 a 5 principais peças/componentes estruturais para desenho técnico:
+        ```json
+        {{
+          "pecas_para_desenho": [
+            {{"nome": "Nome da Peça 1", "descricao": "Descrição técnica da Peça 1 com dimensões estimadas"}},
+            {{"nome": "Nome da Peça 2", "descricao": "Descrição técnica da Peça 2 com dimensões estimadas"}}
+          ]
+        }}
+        ```
+        """
+
+        if st.button("🚀 Processar Orçamento Integrado", type="primary"):
+            if not gemini_key:
+                st.error("Insira a chave Gemini na barra lateral.")
+            else:
+                with st.spinner("Analisando documentos e estruturando orçamento..."):
+                    try:
+                        res_orc = call_gemini(prompt_orcamento, gemini_key)
+                        
+                        partes = res_orc.split("```json")
+                        texto_orcamento = partes[0]
+                        st.session_state["ultimo_orcamento_texto"] = texto_orcamento
+                        
+                        pecas_extraidas = []
+                        if len(partes) > 1:
+                            try:
+                                json_str = partes[1].split("```")[0].strip()
+                                json_data = json.loads(json_str)
+                                pecas_extraidas = json_data.get("pecas_para_desenho", [])
+                            except Exception:
+                                pass
+                        
+                        st.session_state["pecas_orcamento"] = pecas_extraidas
+                        
+                        st.session_state.historico_projetos.append({
+                            "titulo": f"Orçamento: {uploaded_files[0].name}",
+                            "tipo": "Orçamento",
+                            "resumo": texto_orcamento[:150],
+                            "conteudo": texto_orcamento
+                        })
+
+                    except Exception as e:
+                        st.error(f"Erro ao processar orçamento: {str(e)}")
+
+    if "ultimo_orcamento_texto" in st.session_state:
+        st.markdown("---")
+        st.markdown(st.session_state["ultimo_orcamento_texto"])
+        
+        pdf_orc = criar_pdf("ORCAMENTO TECNICO", st.session_state["ultimo_orcamento_texto"])
+        st.download_button("📄 Baixar Orçamento em PDF", data=pdf_orc, file_name="Orcamento_Tecnico.pdf", mime="application/pdf")
+
+        if st.session_state.get("pecas_orcamento"):
+            st.divider()
+            st.subheader("📐 Desenho Técnico das Peças do Orçamento")
+            st.markdown("Selecione um dos componentes extraídos do orçamento para gerar seu esquemático 2D (Blueprint):")
+            
+            opcoes_pecas = [f"{p['nome']} - {p['descricao']}" for p in st.session_state["pecas_orcamento"]]
+            peca_selecionada = st.selectbox("Escolha a peça para gerar o Blueprint:", opcoes_pecas)
+            
+            if st.button("🎨 Gerar Blueprint da Peça Selecionada"):
+                with st.spinner(f"Gerando esquemático para: {peca_selecionada}..."):
+                    prompt_draw = f"""
+                    Atue como um gerador de gráficos Python (Matplotlib).
+                    Crie APENAS um código Python funcional que use matplotlib.pyplot para desenhar um esquema técnico 2D cotado do componente: '{peca_selecionada}'.
                     
-                    st.markdown("### 🎙️ Narração do Roteiro Gerada (Áudio MP3)")
-                    st.audio(fp, format="audio/mp3")
-                    st.download_button("🎵 Baixar Áudio da Locução (.mp3)", data=fp, file_name="locucao_projeto.mp3", mime="audio/mp3")
-                except Exception as e:
-                    st.error(f"Erro ao gerar áudio: {str(e)}")
+                    REGRAS OBRIGATÓRIAS:
+                    - Defina o tamanho da figura como: fig, ax = plt.subplots(figsize=(10, 6))
+                    - Use fundo escuro estilo blueprint (facecolor='#0a192f') no fig e ax.
+                    - Use linhas e textos em branco ou azul claro (ex: '#00d2ff').
+                    - Inclua dimensões e cotas indicativas no desenho.
+                    - NUNCA use plt.tight_layout().
+                    - NÃO coloque explicações ou blocos ```python. Responda APENAS com o código puro.
+                    """
+                    try:
+                        codigo
