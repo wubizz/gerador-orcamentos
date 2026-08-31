@@ -43,7 +43,7 @@ def criar_pdf(titulo, conteudo_texto):
     return pdf.output(dest='S').encode('latin-1', errors='replace')
 
 # ==============================================================================
-# SIDEBAR: CONFIGURAÇÕES E HISTÓRICO DE PROJETOS
+# SIDEBAR
 # ==============================================================================
 with st.sidebar:
     st.header("🔑 Configurações de APIs")
@@ -75,43 +75,12 @@ with st.sidebar:
         st.info("Nenhum projeto salvo na sessão.")
 
 # ==============================================================================
-# FUNÇÕES DE API COM TRATAMENTO DE ERRO 503 (FALLBACK AUTOMÁTICO)
+# FUNÇÕES DE API DAS IAs
 # ==============================================================================
 def call_gemini(prompt, api_key, model="gemini-3.6-flash"):
     client = genai.Client(api_key=api_key)
-    try:
-        response = client.models.generate_content(model=model, contents=prompt)
-        return response.text
-    except Exception as e:
-        error_msg = str(e)
-        if "503" in error_msg or "high demand" in error_msg.lower():
-            fallback_model = "gemini-1.5-flash"
-            st.warning(f"⚠️ O modelo principal ({model}) está com alta demanda. Utilizando o modelo de reserva ({fallback_model})...")
-            try:
-                response_fallback = client.models.generate_content(model=fallback_model, contents=prompt)
-                return response_fallback.text
-            except Exception as e2:
-                raise Exception(f"Erro no modelo de reserva: {str(e2)}")
-        else:
-            raise e
-
-def call_groq(prompt, api_key, model="llama-3.3-70b-versatile"):
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0.7}
-    res = requests.post(url, json=payload, headers=headers)
-    if res.status_code == 200:
-        return res.json()['choices'][0]['message']['content']
-    raise Exception(f"Erro Groq: {res.text}")
-
-def call_openrouter_free(prompt, api_key, model="meta-llama/llama-3.3-70b-instruct:free"):
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {"model": model, "messages": [{"role": "user", "content": prompt}]}
-    res = requests.post(url, json=payload, headers=headers)
-    if res.status_code == 200:
-        return res.json()['choices'][0]['message']['content']
-    raise Exception(f"Erro OpenRouter: {res.text}")
+    response = client.models.generate_content(model=model, contents=prompt)
+    return response.text
 
 # ==============================================================================
 # NAVEGAÇÃO PRINCIPAL POR ABAS
@@ -131,13 +100,6 @@ tabs = st.tabs([
 # ------------------------------------------------------------------------------
 with tabs[0]:
     st.subheader("Laboratório Multiagente de Prototipagem")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        provedor = st.selectbox("Provedor dos Agentes:", ["Google Gemini", "Groq (Llama 3.3)", "OpenRouter Free"])
-    with col2:
-        area_projeto = st.selectbox("Área:", ["Engenharia Química", "Mecânica/Robótica", "Eletrônica/IoT", "Biotecnologia"])
-        
     ideia = st.text_area("Descreva a ideia:", placeholder="Ex: Válvula de retenção biomimética automatizada...")
 
     if st.button("🚀 Processar Invenção", type="primary"):
@@ -145,19 +107,13 @@ with tabs[0]:
             st.warning("Preencha a ideia primeiro.")
         else:
             try:
-                def exec_agente(p):
-                    if "Gemini" in provedor: return call_gemini(p, gemini_key)
-                    elif "Groq" in provedor: return call_groq(p, groq_key)
-                    else: return call_openrouter_free(p, openrouter_key)
+                with st.status("🕵️ Agente 1: Verificando viabilidade...", expanded=True):
+                    r1 = call_gemini(f"Pesquisador Científico. Analise viabilidade de: {ideia}", gemini_key)
+                with st.status("⚙️ Agente 2: Criando especificações...", expanded=True):
+                    r2 = call_gemini(f"Engenheiro. Com base no parecer:\n{r1}\nElabore o projeto técnico detalhado.", gemini_key)
+                with st.status("🛠️ Agente 3: Gerando Lista de Materiais...", expanded=True):
+                    r3 = call_gemini(f"Maker. Com base no projeto:\n{r2}\nCrie a Lista de Materiais e passos de montagem.", gemini_key)
 
-                with st.status("🕵️ Agente 1 (Pesquisador): Verificando viabilidade...", expanded=True):
-                    r1 = exec_agente(f"Pesquisador Científico em {area_projeto}. Analise viabilidade de: {ideia}")
-                with st.status("⚙️ Agente 2 (Engenheiro): Criando especificações...", expanded=True):
-                    r2 = exec_agente(f"Engenheiro. Com base no parecer:\n{r1}\nElabore o projeto técnico detalhado.")
-                with st.status("🛠️ Agente 3 (Maker): Gerando Lista de Materiais...", expanded=True):
-                    r3 = exec_agente(f"Maker. Com base no projeto:\n{r2}\nCrie a Lista de Materiais e passos de montagem.")
-
-                st.success("Dossiê Gerado!")
                 dossie_completo = f"DOSSIÊ TÉCNICO: {ideia[:30]}\n\n--- 1. VIABILIDADE ---\n{r1}\n\n--- 2. PROJETO ---\n{r2}\n\n--- 3. MATERIAIS ---\n{r3}"
                 
                 st.session_state.historico_projetos.append({
@@ -168,10 +124,8 @@ with tabs[0]:
                 })
 
                 st.markdown(dossie_completo)
-
                 pdf_bytes = criar_pdf("DOSSIE DE INVENCAO", dossie_completo)
                 st.download_button("📄 Baixar Dossiê Completo em PDF", data=pdf_bytes, file_name="Dossie_Invention.pdf", mime="application/pdf")
-
             except Exception as e:
                 st.error(f"Erro: {str(e)}")
 
@@ -179,9 +133,7 @@ with tabs[0]:
 # ABA 2: BLUEPRINT & DESENHO DE PEÇAS
 # ------------------------------------------------------------------------------
 with tabs[1]:
-    st.subheader("📐 Gerador de Desenhos Técnicos e Esquema de Peças")
-    st.markdown("Forneça a descrição da peça ou mecanismo para a IA gerar as cotas e o desenho técnico.")
-    
+    st.subheader("📐 Gerador de Desenhos Técnicos")
     descricao_peca = st.text_input("Descrição da peça:", placeholder="Ex: Engrenagem reta de 12 dentes com furo central de 8mm")
     
     if st.button("🎨 Gerar Desenho Técnico 2D"):
@@ -192,56 +144,175 @@ with tabs[1]:
                 prompt_draw = f"""
                 Atue como um gerador de gráficos Python (Matplotlib).
                 Crie APENAS um código Python funcional que use matplotlib.pyplot para desenhar um esquema técnico 2D cotado da peça: '{descricao_peca}'.
-                
-                REGRAS OBRIGATÓRIAS:
-                - Defina o tamanho da figura obrigatoriamente como: fig, ax = plt.subplots(figsize=(10, 6))
+                REGRAS:
+                - Defina o tamanho da figura como: fig, ax = plt.subplots(figsize=(10, 6))
                 - Use fundo escuro estilo blueprint (facecolor='#0a192f') no fig e ax.
                 - Use linhas e textos em branco ou azul claro (ex: '#00d2ff').
                 - Inclua dimensões e cotas indicativas no desenho.
                 - NUNCA use plt.tight_layout().
-                - NÃO coloque explicações ou blocos ```python. Responda APENAS com o código puro.
+                - Responda APENAS com código puro.
                 """
                 try:
                     codigo_python = call_gemini(prompt_draw, gemini_key).replace("```python", "").replace("```", "").strip()
                     plt.close('all')
-                    
                     fig, ax = plt.subplots(figsize=(10, 6))
                     exec_globals = {"plt": plt, "fig": fig, "ax": ax}
-                    
                     exec(codigo_python, exec_globals)
-                    
                     st.pyplot(plt.gcf(), use_container_width=True)
                     plt.close('all')
-                    st.success("Desenho Técnico Gerado com Sucesso!")
                 except Exception as e:
                     plt.close('all')
-                    st.error(f"Não foi possível desenhar a peça automaticamente. Erro: {str(e)}")
+                    st.error(f"Erro no desenho: {str(e)}")
 
 # ------------------------------------------------------------------------------
-# ABA 3: ORÇAMENTOS TÉCNICOS (INTEGRADA COM DESENHOS DE PEÇAS)
+# ABA 3: ORÇAMENTOS TÉCNICOS
 # ------------------------------------------------------------------------------
 with tabs[2]:
-    st.subheader("📋 Gerador de Orçamentos Técnicos & Análise Visual")
+    st.subheader("📋 Gerador de Orçamentos Técnicos")
+    uploaded_files = st.file_uploader("Upload de PDFs/Planilhas/Imagens:", type=["pdf", "xlsx", "csv", "png", "jpg"], accept_multiple_files=True)
+
+    if uploaded_files and st.button("🚀 Processar Orçamento"):
+        with st.spinner("Analisando documentos..."):
+            txt_anexos = "\n".join([f"Arquivo: {f.name}" for f in uploaded_files])
+            res_orc = call_gemini(f"Gere um orçamento detalhado com base nesses arquivos:\n{txt_anexos}", gemini_key)
+            st.markdown(res_orc)
+            
+            st.session_state.historico_projetos.append({
+                "titulo": f"Orçamento {uploaded_files[0].name}",
+                "tipo": "Orçamento",
+                "resumo": res_orc[:150],
+                "conteudo": res_orc
+            })
+            
+            pdf_orc = criar_pdf("ORCAMENTO TECNICO", res_orc)
+            st.download_button("📄 Baixar Orçamento em PDF", data=pdf_orc, file_name="Orcamento.pdf", mime="application/pdf")
+
+# ------------------------------------------------------------------------------
+# ABA 4: OTIMIZADOR DE PLANO DE CORTE (NESTING)
+# ------------------------------------------------------------------------------
+with tabs[3]:
+    st.subheader("✂️ Otimizador de Plano de Corte & Nesting de Materiais")
+    st.markdown("Calcule a quantidade exata de chapas/barras necessárias para o seu projeto com diagrama visual do corte.")
+
+    col_mat, col_esp = st.columns(2)
+    with col_mat:
+        tipo_material = st.selectbox(
+            "Tipo de Matéria-Prima:",
+            ["MDF / Madeira (Chapa Padrão 2750 x 1850 mm)", 
+             "Tubos / Cantoneiras / Perfis (Barra de 6000 mm)", 
+             "Chapas Metálicas em Geral (Dimensão Personalizada)"]
+        )
+
+    # Definição das dimensões brutas da matéria-prima com base na seleção
+    if "MDF" in tipo_material:
+        largura_bruta = 2750
+        comprimento_bruto = 1850
+        st.info(f"📏 Dimensão da Chapa Padrão de MDF: **{largura_bruta} x {comprimento_bruto} mm**")
+    elif "Tubos" in tipo_material:
+        largura_bruta = 6000
+        comprimento_bruto = 0 # 0 indica perfil unidimensional/barra
+        st.info(f"📏 Comprimento Padrão da Barra: **{largura_bruta} mm (6 metros)**")
+    else:
+        with col_esp:
+            largura_bruta = st.number_input("Largura da Chapa do Fornecedor (mm):", min_value=100, value=3000, step=50)
+            comprimento_bruto = st.number_input("Comprimento da Chapa do Fornecedor (mm):", min_value=100, value=1500, step=50)
+            st.caption(f"📏 Dimensão Personalizada da Chapa: **{largura_bruta} x {comprimento_bruto} mm**")
+
+    st.divider()
+    st.markdown("### 📋 Digite a Lista de Peças a Cortar")
     
-    scale_info = st.text_input("Referência de medida/escala (Ex: O vão principal tem 3.50m):", placeholder="Informe a referência se houver...")
-    uploaded_files = st.file_uploader("Upload de PDFs/Planilhas/Imagens:", type=["pdf", "xlsx", "csv", "png", "jpg", "jpeg"], accept_multiple_files=True, key="orc_files")
+    lista_pecas_input = st.text_area(
+        "Forneça a lista de peças no formato (Peça, Largura_mm, Comprimento_mm, Quantidade):",
+        height=120,
+        placeholder="Exemplo para Chapas:\nLateral, 500, 1800, 2\nTampa, 600, 800, 1\nFundo, 500, 750, 2\n\nExemplo para Tubos/Barra:\nTubo_Base, 1200, 0, 4\nTubo_Coluna, 850, 0, 8"
+    )
 
-    if uploaded_files:
-        prompt_orcamento = f"""
-        Você é um Engenheiro Orçamentista.
-        Examine os arquivos anexados.
-        {f"ESCALA DE REFERÊNCIA: {scale_info}" if scale_info else ""}
+    espessura_disco = st.number_input("Espessura da serra/largura do corte (Kerf em mm):", min_value=0.0, value=3.0, step=0.5)
 
-        Gere um ORÇAMENTO TÉCNICO COMPLETO contendo:
-        1. Resumo Executivo
-        2. Tabela de Quantitativo de Materiais e Peças
-        3. Resumo Financeiro Final
-        
-        IMPORTANTE: Ao final da resposta, inclua obrigatoriamente um bloco JSON estrito no seguinte formato listando as 3 a 5 principais peças/componentes estruturais para desenho técnico:
-        ```json
-        {{
-          "pecas_para_desenho": [
-            {{"nome": "Nome da Peça 1", "descricao": "Descrição técnica da Peça 1 com dimensões estimadas"}},
-            {{"nome": "Nome da Peça 2", "descricao": "Descrição técnica da Peça 2 com dimensões estimadas"}}
-          ]
-        }}
+    if st.button("✂️ Calcular Plano de Corte e Gerar Diagrama", type="primary"):
+        if not lista_pecas_input.strip():
+            st.warning("Preencha a lista de peças antes de prosseguir.")
+        else:
+            with st.spinner("Calculando o aproveitamento e gerando plano de otimização..."):
+                prompt_corte = f"""
+                Atue como Engenheiro de Processos especialista em Nesting de Corte.
+                
+                DADOS DA MATÉRIA-PRIMA:
+                - Tipo: {tipo_material}
+                - Largura Bruta: {largura_bruta} mm
+                - Comprimento Bruto: {comprimento_bruto} mm (Se for 0, considerar perfil linear de {largura_bruta} mm)
+                - Perda na Serra (Kerf): {espessura_disco} mm
+                
+                LISTA DE PEÇAS REQUISITADAS:
+                {lista_pecas_input}
+                
+                Gere um relatório detalhado de aproveitamento contendo:
+                1. Quantidade total de Chapas/Barras inteiras necessárias.
+                2. Percentual de Aproveitamento de Área/Comprimento (%) e % de Retalho/Sobra.
+                3. Instruções passo a passo da sequência dos cortes.
+                4. Código Matplotlib embutido puro para desenhar a disposição das peças na chapa/barra.
+                """
+                
+                try:
+                    res_corte = call_gemini(prompt_corte, gemini_key)
+                    st.markdown("### 📊 Relatório de Otimização de Corte")
+                    st.markdown(res_corte)
+                    
+                    # Tenta desenhar o diagrama visual de corte
+                    prompt_draw_nesting = f"""
+                    Crie APENAS um código Python (Matplotlib) funcional para desenhar a disposição gráfica dos retângulos/barras de corte das peças:
+                    Mátéria-Prima: {largura_bruta}x{comprimento_bruto}mm. Peças: {lista_pecas_input}.
+                    
+                    REGRAS OBRIGATÓRIAS:
+                    - Desenhe os retângulos da chapa ({largura_bruta}x{comprimento_bruto}) com fundo cinza escuro.
+                    - Desenhe as peças posicionadas com cores vivas e rótulos do nome da peça e dimensão.
+                    - Use fig, ax = plt.subplots(figsize=(10, 6))
+                    - NUNCA use plt.tight_layout().
+                    - Responda APENAS com código puro, sem ```python.
+                    """
+                    codigo_nesting = call_gemini(prompt_draw_nesting, gemini_key).replace("```python", "").replace("```", "").strip()
+                    
+                    plt.close('all')
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    exec_globals = {"plt": plt, "fig": fig, "ax": ax, "patches": patches}
+                    exec(codigo_nesting, exec_globals)
+                    
+                    st.markdown("### 📐 Diagrama de Disposição do Corte (Nesting)")
+                    st.pyplot(plt.gcf(), use_container_width=True)
+                    plt.close('all')
+
+                    # Salva no Histórico do Sistema
+                    st.session_state.historico_projetos.append({
+                        "titulo": f"Plano de Corte ({tipo_material[:10]})",
+                        "tipo": "Plano de Corte",
+                        "resumo": f"Material: {tipo_material} | Pecas: {lista_pecas_input[:50]}...",
+                        "conteudo": res_corte
+                    })
+
+                except Exception as e:
+                    plt.close('all')
+                    st.error(f"Erro no cálculo do plano de corte: {str(e)}")
+
+# ------------------------------------------------------------------------------
+# ABA 5: VÍDEOS & NARRAÇÃO
+# ------------------------------------------------------------------------------
+with tabs[4]:
+    st.subheader("🎬 Gerador de Conteúdo Multimídia (Roteiro + Narração)")
+    topico_video = st.text_input("Tema do Vídeo:", placeholder="Ex: Apresentação comercial da nova invenção")
+    idioma = st.selectbox("Idioma:", ["pt", "en", "es"])
+
+    if st.button("🎬 Criar Roteiro e Gerar Narração em Áudio"):
+        if not topico_video:
+            st.warning("Digite o tema.")
+        else:
+            with st.spinner("Sintetizando locução em MP3..."):
+                roteiro = call_gemini(f"Crie um roteiro de vídeo curto (1 min) para: '{topico_video}'. Divida em [CENA], [VISUAL] e [LOCUÇÃO].", gemini_key)
+                st.markdown(roteiro)
+                
+                tts = gTTS(text=roteiro, lang=idioma, slow=False)
+                fp = io.BytesIO()
+                tts.write_to_fp(fp)
+                fp.seek(0)
+                
+                st.audio(fp, format="audio/mp3")
+                st.download_button("🎵 Baixar Áudio MP3", data=fp, file_name="locucao.mp3", mime="audio/mp3")
