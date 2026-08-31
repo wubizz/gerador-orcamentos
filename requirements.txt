@@ -1,6 +1,9 @@
 streamlit
-google-genai
 pandas
-openpyxl
-pypdf
+requests
 pillow
+pypdf
+google-genai
+fpdf2
+gTTS
+matplotlib
