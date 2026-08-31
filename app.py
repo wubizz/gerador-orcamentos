@@ -103,13 +103,11 @@ def gerar_desenho_cad_industrial(nome_peca, comp=1200, larg=600):
         rect_front = patches.Rectangle((0.15, 0.2), 0.7, 0.6, linewidth=2, edgecolor="#38bdf8", facecolor="#1e293b", hatch="//")
         ax1.add_patch(rect_front)
         
-        # Furações (Minifix / Cavilhas)
         ax1.add_patch(patches.Circle((0.25, 0.5), 0.035, facecolor="#ef4444", edgecolor="white", lw=1.2))
         ax1.add_patch(patches.Circle((0.75, 0.5), 0.035, facecolor="#ef4444", edgecolor="white", lw=1.2))
         ax1.text(0.25, 0.5, "Ø15", color="white", fontsize=6, ha="center", va="center", weight="bold")
         ax1.text(0.75, 0.5, "Ø15", color="white", fontsize=6, ha="center", va="center", weight="bold")
 
-        # Linhas de Cota
         ax1.annotate('', xy=(0.15, 0.12), xytext=(0.85, 0.12), arrowprops=dict(arrowstyle="<->", color="#fbbf24", lw=1.5))
         ax1.text(0.5, 0.06, f"COMP: {comp} mm", color="#fbbf24", fontsize=9, ha="center", weight="bold")
         
@@ -422,7 +420,7 @@ st.title("⚡ Multi-Engine IA: Invenções & Engenharia Pro")
 
 tabs = st.tabs([
     "🧪 Agentes de Invenção",
-    "📐 CAD Pro (Multivistas & CNC)",
+    "📐 CAD Pro (Multivistas & CNC em Lote)",
     "📋 Orçamentos, Planilha Real & Nesting",
     "✂️ Otimizador de Corte",
     "🎬 Vídeos & Narração"
@@ -520,30 +518,92 @@ Estrutura obrigatória:
 
 
 # ==============================================================================
-# ABA 2 — CAD PRO (MULTIVISTAS & CNC)
+# ABA 2 — CAD PRO (MULTIVISTAS, CNC EM LOTE & UPLOAD DE RENDERS/PROJETOS)
 # ==============================================================================
 with tabs[1]:
-    st.subheader("📐 CAD Pro: Gerador de Desenhos Técnicos Multivistas & Matriz CNC")
-    col_d1, col_d2 = st.columns(2)
-    with col_d1:
-        peca_nome_input = st.text_input("Nome da Peça CAD:", value="Lateral de Gabinete")
-    with col_d2:
-        dim_comp = st.number_input("Comprimento (mm):", min_value=10.0, value=1200.0, step=50.0)
-        dim_larg = st.number_input("Largura (mm):", min_value=10.0, value=600.0, step=50.0)
+    st.subheader("📐 CAD Pro: Geração em Lote de Desenhos Multivistas & Análise de Renders/Projetos")
+    st.markdown("Envie uma **Imagem de Render/Plata**, um **Arquivo de Projeto (.json)** ou utilize o modo manual para gerar todos os desenhos CAD e tabelas CNC de uma só vez.")
 
-    if st.button("🎨 Renderizar Desenho CAD Industrial"):
-        if not peca_nome_input.strip():
-            st.warning("Informe o nome da peça.")
-        else:
-            with st.spinner("Gerando projeções ortogonais e tabela CNC..."):
-                try:
-                    img_path = gerar_desenho_cad_industrial(peca_nome_input, dim_comp, dim_larg)
-                    if img_path and os.path.exists(img_path):
-                        st.image(img_path, caption=f"CAD Industrial Multivistas: {peca_nome_input}", use_container_width=True)
-                        os.unlink(img_path)
-                    st.success("Desenho CAD industrial gerado com sucesso!")
-                except Exception as e:
-                    st.error(f"Erro ao renderizar CAD: {e}")
+    cad_modo = st.radio("Selecione o modo de entrada:", ["📁 Importar Arquivo de Projeto / Imagem de Render", "⚙️ Modo Manual Peça Única"], horizontal=True)
+
+    if cad_modo == "📁 Importar Arquivo de Projeto / Imagem de Render":
+        arquivo_cad = st.file_uploader("Faça upload da Imagem de Render (PNG/JPG) ou do Projeto (.json / .pdf):", type=["png", "jpg", "jpeg", "json", "pdf"])
+
+        if arquivo_cad:
+            if st.button("🚀 Processar e Gerar Todos os Desenhos CAD em Lote", type="primary"):
+                if not gemini_key:
+                    st.error("Insira a chave Gemini na barra lateral.")
+                else:
+                    with st.spinner("Analisando render/projeto, deduzindo dimensões e gerando desenhos industriais..."):
+                        try:
+                            pecas_lote = []
+                            if arquivo_cad.type.startswith("image"):
+                                img_render = Image.open(arquivo_cad)
+                                st.image(img_render, width=300, caption="Render / Projeto Enviado")
+                                
+                                prompt_visao = """
+                                Analise esta imagem de render ou projeto industrial. 
+                                Deduza as principais peças estruturais componentes e retorne APENAS um JSON válido contendo uma lista de peças, sem markdown.
+                                Estrutura:
+                                {
+                                  "pecas_para_desenho": [
+                                    {"nome": "Nome da Peça 1", "comp": 1200, "larg": 600, "descricao": "Especificação"},
+                                    {"nome": "Nome da Peça 2", "comp": 800, "larg": 400, "descricao": "Especificação"}
+                                  ]
+                                }
+                                """
+                                res_visao = call_gemini([img_render, prompt_visao], gemini_key)
+                                json_visao = extrair_json_seguro(res_visao)
+                                pecas_lote = json.loads(json_visao).get("pecas_para_desenho", [])
+
+                            elif arquivo_cad.name.endswith(".json"):
+                                conteudo_json = json.load(arquivo_cad)
+                                pecas_lote = conteudo_json.get("pecas_para_desenho", [])
+                            elif arquivo_cad.type == "application/pdf":
+                                texto_pdf = read_pdf(arquivo_cad)
+                                prompt_pdf = f"Extraia a lista de peças com nome, comp, larg do texto abaixo e retorne APENAS JSON puro:\n{text_pdf}\nFormato: {{\"pecas_para_desenho\": [{{\"nome\": \"\", \"comp\": 100, \"larg\": 100}}]}}"
+                                res_pdf = call_gemini(prompt_pdf, gemini_key)
+                                pecas_lote = json.loads(extrair_json_seguro(res_pdf)).get("pecas_para_desenho", [])
+
+                            if pecas_lote:
+                                st.success(f"Foram identificados {len(pecas_lote)} componentes para detalhamento CAD!")
+                                for p in pecas_lote:
+                                    nome = p.get("nome", "Componente")
+                                    c = float(p.get("comp", 1000))
+                                    l = float(p.get("larg", 500))
+                                    
+                                    st.markdown(f"---")
+                                    st.markdown(f"### ⚙️ Detalhamento CAD: **{nome}** ({c}x{l} mm)")
+                                    img_c = gerar_desenho_cad_industrial(nome, c, l)
+                                    if img_c and os.path.exists(img_c):
+                                        st.image(img_c, use_container_width=True)
+                                        os.unlink(img_c)
+                            else:
+                                st.warning("Não foi possível extrair peças automaticamente deste arquivo.")
+                        except Exception as e:
+                            st.error(f"Erro ao processar arquivo CAD: {str(e)}")
+
+    else:
+        col_d1, col_d2 = st.columns(2)
+        with col_d1:
+            peca_nome_input = st.text_input("Nome da Peça CAD:", value="Lateral de Gabinete")
+        with col_d2:
+            dim_comp = st.number_input("Comprimento (mm):", min_value=10.0, value=1200.0, step=50.0)
+            dim_larg = st.number_input("Largura (mm):", min_value=10.0, value=600.0, step=50.0)
+
+        if st.button("🎨 Renderizar Desenho CAD Industrial"):
+            if not peca_nome_input.strip():
+                st.warning("Informe o nome da peça.")
+            else:
+                with st.spinner("Gerando projeções ortogonais e tabela CNC..."):
+                    try:
+                        img_path = gerar_desenho_cad_industrial(peca_nome_input, dim_comp, dim_larg)
+                        if img_path and os.path.exists(img_path):
+                            st.image(img_path, caption=f"CAD Industrial Multivistas: {peca_nome_input}", use_container_width=True)
+                            os.unlink(img_path)
+                        st.success("Desenho CAD industrial gerado com sucesso!")
+                    except Exception as e:
+                        st.error(f"Erro ao renderizar CAD: {e}")
 
 
 # ==============================================================================
